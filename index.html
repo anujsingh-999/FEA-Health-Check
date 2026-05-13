@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FEA Health Check</title>
+    <link rel="stylesheet" href="styles.css?v=20260510c" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>FEA Health Check</h1>
+        </div>
+      </header>
+
+      <section id="kpis" class="kpi-grid" aria-label="Top-line attendance metrics"></section>
+
+      <section class="matrix-row">
+        <article class="panel matrix-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Regional matrix</p>
+              <h2>RM-wise attendance windows</h2>
+            </div>
+          </div>
+          <div id="rmMatrix" class="rm-matrix"></div>
+        </article>
+      </section>
+
+      <section class="main-grid">
+        <article class="panel trend-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Trend</p>
+              <h2 id="trendTitle">Performance over time</h2>
+            </div>
+            <div id="trendLegend" class="legend"></div>
+          </div>
+          <div id="trendChart" class="chart"></div>
+        </article>
+      </section>
+
+      <section class="split-grid">
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Management capacity</p>
+              <h2>Management Capacity Building</h2>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>RM</th>
+                  <th>Vacancies %</th>
+                  <th>No. of SAMs</th>
+                  <th>No. of AMs</th>
+                  <th>No. of TMs</th>
+                  <th>Vacant TM capacity</th>
+                </tr>
+              </thead>
+              <tbody id="rmTable"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Area view</p>
+              <h2>Area manager performance</h2>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>AM</th>
+                  <th>State</th>
+                  <th>SAM</th>
+                  <th>RM</th>
+                  <th>Latest</th>
+                  <th>WoW</th>
+                  <th>4W Avg</th>
+                </tr>
+              </thead>
+              <tbody id="amTable"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script src="data/dashboard-data.js?v=20260510c"></script>
+    <script src="data/branch-structure.js?v=20260510c"></script>
+    <script src="app.js?v=20260510c"></script>
+  </body>
+</html>

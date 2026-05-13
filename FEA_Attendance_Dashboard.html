@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FEA Attendance Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0D1117;
+  --surface: #161B22;
+  --surface2: #21262D;
+  --border: rgba(255,255,255,0.08);
+  --text: #E6EDF3;
+  --muted: #7D8590;
+  --accent: #4493F8;
+  --cyan: #39D0CB;
+  --success: #3FB950;
+  --warn: #D29922;
+  --danger: #F85149;
+  --target: #F0883E;
+  --font: 'DM Sans', sans-serif;
+  --mono: 'DM Mono', monospace;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 2rem;
+}
+.wrap { max-width: 1360px; margin: 0 auto; }
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 1.5rem;
+}
+.logo { display: flex; align-items: center; gap: 12px; }
+.logo-mark {
+  width: 40px; height: 40px;
+  background: linear-gradient(135deg, var(--accent), var(--cyan));
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 600; font-size: 15px; color: #fff; letter-spacing: 0.5px;
+}
+h1 { font-size: 1.4rem; font-weight: 600; color: var(--text); }
+.subtitle { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+.live-badge {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.75rem; color: var(--success);
+  background: rgba(63,185,80,0.1);
+  border: 1px solid rgba(63,185,80,0.25);
+  padding: 5px 12px; border-radius: 20px;
+}
+.dot {
+  width: 7px; height: 7px;
+  background: var(--success); border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%,100% { opacity: 0.5; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+.target-banner {
+  background: rgba(240,136,62,0.08);
+  border: 1px solid rgba(240,136,62,0.2);
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-size: 0.8rem;
+  color: var(--target);
+  margin-bottom: 1.5rem;
+  display: flex; align-items: center; gap: 8px;
+}
+
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+@media(max-width:900px) { .metrics { grid-template-columns: repeat(2,1fr); } }
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+.card-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.6rem; }
+.card-value { font-size: 2rem; font-weight: 600; font-family: var(--mono); line-height: 1; }
+.card-sub { font-size: 0.78rem; color: var(--muted); margin-top: 6px; }
+.trend-up { color: var(--success); }
+.trend-down { color: var(--danger); }
+.trend-flat { color: var(--warn); }
+.gap-value { color: var(--target); }
+.accent-value { color: var(--accent); }
+
+.charts { display: grid; grid-template-columns: 3fr 2fr; gap: 1rem; margin-bottom: 1.5rem; }
+@media(max-width:1024px) { .charts { grid-template-columns: 1fr; } }
+.chart-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+.chart-title { font-size: 0.85rem; font-weight: 500; color: var(--text); margin-bottom: 0.4rem; }
+.chart-desc { font-size: 0.72rem; color: var(--muted); margin-bottom: 1rem; }
+.chart-legend {
+  display: flex; flex-wrap: wrap; gap: 12px;
+  margin-bottom: 12px; font-size: 0.72rem; color: var(--muted);
+}
+.legend-item { display: flex; align-items: center; gap: 5px; }
+.legend-line { width: 18px; height: 2px; }
+.legend-dash { width: 18px; height: 0; border-top: 2px dashed; }
+.chart-wrap { position: relative; width: 100%; height: 280px; }
+
+.table-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+.table-title { font-size: 0.85rem; font-weight: 500; color: var(--text); margin-bottom: 1rem; }
+table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+th { color: var(--muted); font-weight: 500; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.07em; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+td { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255,255,255,0.02); }
+.bar-cell { display: flex; align-items: center; gap: 10px; }
+.bar-track { width: 80px; height: 5px; background: var(--surface2); border-radius: 3px; }
+.bar-fill { height: 100%; border-radius: 3px; background: var(--cyan); }
+.target-line-label { font-size: 0.68rem; color: var(--target); }
+
+.milestones {
+  display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; margin-top: 1rem;
+}
+.milestone {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+  display: flex; gap: 10px; align-items: flex-start;
+}
+.milestone-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 3px; flex-shrink: 0; }
+.milestone-label { font-size: 0.78rem; color: var(--muted); }
+.milestone-value { font-size: 1.1rem; font-weight: 600; font-family: var(--mono); }
+.milestone-date { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
+
+#error-msg { color: var(--danger); font-size: 0.85rem; padding: 1rem; display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="logo">
+    <div class="logo-mark">FEA</div>
+    <div>
+      <h1>Attendance Dashboard</h1>
+      <div class="subtitle">Weekly student attendance · 2024 vs 2025</div>
+    </div>
+  </div>
+  <div class="live-badge"><span class="dot"></span><span id="last-updated">Connecting...</span></div>
+</header>
+
+<div class="target-banner">
+  ◎ &nbsp;Target: 80% by December 2026 &nbsp;·&nbsp; Milestones: 70% Jun 2026 &nbsp;|&nbsp; 75% Sep 2026 &nbsp;|&nbsp; 80% Dec 2026
+</div>
+
+<div id="error-msg">Unable to load data. Check your internet connection or Google Sheets permissions.</div>
+
+<div class="metrics">
+  <div class="card">
+    <div class="card-label">Latest Average</div>
+    <div class="card-value accent-value" id="m-latest">--%</div>
+    <div class="card-sub" id="m-week">Week --</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Week-on-Week Change</div>
+    <div class="card-value" id="m-wow">--</div>
+    <div class="card-sub" id="m-wow-sub">vs previous week</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Gap to 80% Target</div>
+    <div class="card-value gap-value" id="m-gap">--%</div>
+    <div class="card-sub" id="m-gap-sub">percentage points needed</div>
+  </div>
+  <div class="card">
+    <div class="card-label">2025 Peak vs 2024 Peak</div>
+    <div class="card-value" id="m-peak">-- / --</div>
+    <div class="card-sub">highest week recorded</div>
+  </div>
+</div>
+
+<div class="charts">
+  <div class="chart-card">
+    <div class="chart-title">Year-over-Year Trend: 2024 vs 2025</div>
+    <div class="chart-desc">Weekly attendance % with 80% target milestone</div>
+    <div class="chart-legend">
+      <div class="legend-item"><div class="legend-line" style="background:#4493F8"></div><span>2025</span></div>
+      <div class="legend-item"><div class="legend-dash" style="border-color:#7D8590"></div><span>2024</span></div>
+      <div class="legend-item"><div class="legend-dash" style="border-color:#F0883E"></div><span>80% target</span></div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="yoyChart" role="img" aria-label="Line chart comparing 2024 and 2025 weekly attendance percentages with 80% target line">2024 vs 2025 weekly attendance trend</canvas>
+    </div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">2025 Weekly Average</div>
+    <div class="chart-desc">Current year attendance by week</div>
+    <div class="chart-wrap" style="height:310px">
+      <canvas id="avgChart" role="img" aria-label="Bar chart of 2025 weekly average attendance">2025 weekly average attendance</canvas>
+    </div>
+  </div>
+</div>
+
+<div class="table-card">
+  <div class="table-title">Recent Weeks — Average Student Attendance</div>
+  <table id="dataTable">
+    <thead>
+      <tr>
+        <th>Week</th>
+        <th>Average %</th>
+        <th>vs Target (80%)</th>
+        <th>vs Previous Week</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<div class="milestones">
+  <div class="milestone">
+    <div class="milestone-dot" style="background:#D29922"></div>
+    <div>
+      <div class="milestone-label">Milestone 1</div>
+      <div class="milestone-value">70%</div>
+      <div class="milestone-date">June 2026</div>
+    </div>
+  </div>
+  <div class="milestone">
+    <div class="milestone-dot" style="background:#4493F8"></div>
+    <div>
+      <div class="milestone-label">Milestone 2</div>
+      <div class="milestone-value">75%</div>
+      <div class="milestone-date">September 2026</div>
+    </div>
+  </div>
+  <div class="milestone">
+    <div class="milestone-dot" style="background:#3FB950"></div>
+    <div>
+      <div class="milestone-label">Final Target</div>
+      <div class="milestone-value">80%</div>
+      <div class="milestone-date">December 2026</div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const SHEET_URL = 'https://docs.google.com/spreadsheets/d/11kof2bCLpS-q7WFQdFM0_jkxp0mB3_vUA0bo_hM8wgQ/export?format=csv';
+const TARGET = 80;
+
+let yoyInst = null, avgInst = null;
+
+Chart.defaults.color = '#7D8590';
+Chart.defaults.font.family = "'DM Sans', sans-serif";
+Chart.defaults.font.size = 11;
+
+async function load() {
+  try {
+    const res = await fetch(SHEET_URL);
+    if (!res.ok) throw new Error('fetch failed');
+    const csv = await res.text();
+    Papa.parse(csv, {
+      header: false,
+      complete: r => render(r.data),
+      error: e => showError()
+    });
+    document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  } catch(e) {
+    showError();
+  }
+}
+
+function showError() {
+  document.getElementById('error-msg').style.display = 'block';
+  document.getElementById('last-updated').textContent = 'Error loading data';
+}
+
+function render(raw) {
+  const rows = raw.slice(1);
+  const avg = [], d24 = [], d25 = [];
+
+  rows.forEach(r => {
+    if (r[0] && r[1] && !isNaN(parseFloat(r[1])))
+      avg.push({ week: parseInt(r[0]), val: parseFloat(r[1]) });
+    if (r[10] && r[11] && !isNaN(parseFloat(r[11])))
+      d24.push({ week: parseInt(r[10]), val: parseFloat(r[11]) });
+    if (r[13] && r[14] && !isNaN(parseFloat(r[14])))
+      d25.push({ week: parseInt(r[13]), val: parseFloat(r[14]) });
+  });
+
+  updateMetrics(avg, d24, d25);
+  updateTable(avg);
+  renderYoY(d24, d25);
+  renderAvg(avg);
+}
+
+function updateMetrics(avg, d24, d25) {
+  if (avg.length === 0) return;
+  const latest = avg[avg.length - 1];
+  const prev = avg.length > 1 ? avg[avg.length - 2] : null;
+  const wow = prev ? (latest.val - prev.val) : null;
+  const gap = TARGET - latest.val;
+  const peak25 = d25.length ? Math.max(...d25.map(d=>d.val)) : null;
+  const peak24 = d24.length ? Math.max(...d24.map(d=>d.val)) : null;
+
+  document.getElementById('m-latest').textContent = latest.val.toFixed(1) + '%';
+  document.getElementById('m-week').textContent = 'Week ' + latest.week;
+
+  if (wow !== null) {
+    const el = document.getElementById('m-wow');
+    const sign = wow >= 0 ? '+' : '';
+    el.textContent = sign + wow.toFixed(1) + '%';
+    el.className = 'card-value ' + (wow > 0 ? 'trend-up' : wow < 0 ? 'trend-down' : 'trend-flat');
+    document.getElementById('m-wow-sub').textContent = 'vs Week ' + prev.week;
+  }
+
+  const gapEl = document.getElementById('m-gap');
+  if (gap <= 0) {
+    gapEl.textContent = '✓ On target';
+    gapEl.style.color = 'var(--success)';
+    document.getElementById('m-gap-sub').textContent = 'Target reached';
+  } else {
+    gapEl.textContent = gap.toFixed(1) + '%';
+    document.getElementById('m-gap-sub').textContent = 'points needed to reach 80%';
+  }
+
+  if (peak25 && peak24) {
+    document.getElementById('m-peak').textContent = peak25.toFixed(1) + '% / ' + peak24.toFixed(1) + '%';
+  }
+}
+
+function updateTable(avg) {
+  const tbody = document.querySelector('#dataTable tbody');
+  tbody.innerHTML = '';
+  const recent = [...avg].reverse().slice(0, 8);
+  const allVals = avg.map(d => d.val);
+
+  recent.forEach((item, i) => {
+    const prevItem = avg[avg.length - 1 - i - 1];
+    const wow = prevItem ? item.val - prevItem.val : null;
+    const gap = item.val - TARGET;
+
+    const tr = document.createElement('tr');
+    const pct = Math.min(item.val, 100);
+    const gapStr = gap >= 0 
+      ? `<span style="color:var(--success)">+${gap.toFixed(1)}%</span>`
+      : `<span style="color:var(--danger)">${gap.toFixed(1)}%</span>`;
+    const wowStr = wow === null ? '—'
+      : wow > 0 ? `<span style="color:var(--success)">▲ ${wow.toFixed(1)}%</span>`
+      : wow < 0 ? `<span style="color:var(--danger)">▼ ${Math.abs(wow).toFixed(1)}%</span>`
+      : `<span style="color:var(--muted)">— 0%</span>`;
+
+    tr.innerHTML = `
+      <td style="font-family:var(--mono);color:var(--muted)">Wk ${item.week}</td>
+      <td>
+        <div class="bar-cell">
+          <div class="bar-track"><div class="bar-fill" style="width:${(item.val/100)*100}%;background:${item.val >= TARGET ? 'var(--success)' : item.val >= 75 ? 'var(--accent)' : item.val >= 70 ? 'var(--warn)' : 'var(--danger)'}"></div></div>
+          <span style="font-family:var(--mono);font-size:0.82rem">${item.val.toFixed(1)}%</span>
+        </div>
+      </td>
+      <td>${gapStr}</td>
+      <td>${wowStr}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function toWeekMap(arr) {
+  const m = new Array(52).fill(null);
+  arr.forEach(d => { if (d.week >= 1 && d.week <= 52) m[d.week-1] = d.val; });
+  return m;
+}
+
+function renderYoY(d24, d25) {
+  const ctx = document.getElementById('yoyChart').getContext('2d');
+  if (yoyInst) yoyInst.destroy();
+  const labels = Array.from({length:52},(_,i)=>i+1);
+  const targetLine = new Array(52).fill(TARGET);
+
+  yoyInst = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: '2025',
+          data: toWeekMap(d25),
+          borderColor: '#4493F8',
+          backgroundColor: 'rgba(68,147,248,0.08)',
+          borderWidth: 2,
+          tension: 0.4,
+          fill: true,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          spanGaps: true
+        },
+        {
+          label: '2024',
+          data: toWeekMap(d24),
+          borderColor: '#7D8590',
+          borderDash: [4,4],
+          borderWidth: 1.5,
+          tension: 0.4,
+          fill: false,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          spanGaps: true
+        },
+        {
+          label: '80% Target',
+          data: targetLine,
+          borderColor: '#F0883E',
+          borderDash: [6,3],
+          borderWidth: 1.5,
+          fill: false,
+          pointRadius: 0,
+          pointHoverRadius: 0,
+          tension: 0
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#161B22',
+          titleColor: '#E6EDF3',
+          bodyColor: '#7D8590',
+          borderColor: 'rgba(255,255,255,0.1)',
+          borderWidth: 1,
+          padding: 10,
+          callbacks: {
+            label: ctx => {
+              if (ctx.parsed.y === null) return null;
+              if (ctx.dataset.label === '80% Target') return ' Target: 80%';
+              return ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          ticks: { maxTicksLimit: 13 },
+          title: { display: true, text: 'Week of year', color: '#7D8590' }
+        },
+        y: {
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          min: 40, max: 85,
+          title: { display: true, text: 'Attendance %', color: '#7D8590' },
+          ticks: { callback: v => v + '%' }
+        }
+      }
+    }
+  });
+}
+
+function renderAvg(avg) {
+  const ctx = document.getElementById('avgChart').getContext('2d');
+  if (avgInst) avgInst.destroy();
+
+  const labels = avg.map(d => 'W' + d.week);
+  const data = avg.map(d => d.val);
+  const colors = data.map(v => v >= TARGET ? '#3FB950' : v >= 75 ? '#4493F8' : v >= 70 ? '#D29922' : '#F85149');
+
+  avgInst = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Average %',
+          data,
+          backgroundColor: colors,
+          borderRadius: 4,
+          borderSkipped: false
+        },
+        {
+          label: '80% Target',
+          data: new Array(avg.length).fill(TARGET),
+          type: 'line',
+          borderColor: '#F0883E',
+          borderDash: [5,3],
+          borderWidth: 1.5,
+          pointRadius: 0,
+          fill: false,
+          tension: 0,
+          order: 0
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#161B22',
+          titleColor: '#E6EDF3',
+          bodyColor: '#7D8590',
+          borderColor: 'rgba(255,255,255,0.1)',
+          borderWidth: 1,
+          padding: 10,
+          callbacks: {
+            label: ctx => ctx.dataset.label === '80% Target' ? ' Target: 80%' : ` ${ctx.parsed.y.toFixed(1)}%`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { maxTicksLimit: 18, font: { size: 10 } }
+        },
+        y: {
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          min: 40, max: 85,
+          ticks: { callback: v => v + '%' }
+        }
+      }
+    }
+  });
+}
+
+load();
+setInterval(load, 5 * 60 * 1000);
+</script>
+</body>
+</html>
