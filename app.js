@@ -1,7 +1,7 @@
 let data = window.DASHBOARD_DATA;
 const branchStructure = window.BRANCH_STRUCTURE || { regionalManagers: {} };
 const SPREADSHEET_ID = "11kof2bCLpS-q7WFQdFM0_jkxp0mB3_vUA0bo_hM8wgQ";
-const SHEET_NAMES = ["Overall", "AM wise", "SAM wise", "RM wise", "Low Attednance", "Targets"];
+const SHEET_NAMES = ["Overall", "AM wise", "SAM wise", "RM wise", "Low Attednance", "Targets", "Branch Per RM", "Emp Attrition"];
 
 const state = {
   rm: "All",
@@ -15,6 +15,8 @@ const els = {
   rmMatrix: document.querySelector("#rmMatrix"),
   rmTable: document.querySelector("#rmTable"),
   amTable: document.querySelector("#amTable"),
+  branchGrowthTable: document.querySelector("#branchGrowthTable"),
+  teacherGrowthChart: document.querySelector("#teacherGrowthChart"),
 };
 
 function gvizSheet(sheetName) {
@@ -71,6 +73,11 @@ function cleanNumber(value) {
   if (typeof value === "number") return Math.round(value * 100) / 100;
   const parsed = Number(String(value).replace("%", "").trim());
   return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : value;
+}
+
+function numericValue(value) {
+  const cleaned = cleanNumber(value);
+  return Number.isFinite(cleaned) ? cleaned : null;
 }
 
 function normalizeWeek(label) {
@@ -140,6 +147,136 @@ function readTargets(rows) {
   }).filter((record) => record.rm && record.sam && record.targets.length);
 }
 
+function normalizeRmName(label) {
+  const text = String(label || "")
+    .replace(/\bactual\b/ig, "")
+    .replace(/\bRM\b/ig, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (/manikant/i.test(text)) return "Manikant Mishra";
+  if (/ankita/i.test(text)) return "Ankita Srivastava";
+  if (/surbhi/i.test(text)) return "Surbhi Chaudhary";
+  if (/deepak/i.test(text)) return "Deepak Verma";
+  if (/mukesh/i.test(text)) return "Mukesh Upadhyay";
+  if (/darshana/i.test(text)) return "Darshana V";
+  return text.split(",")[0].trim();
+}
+
+function parsePipeline(value) {
+  if (value === null || value === undefined || value === "") return { teachers: null, tms: null };
+  const text = String(value).trim();
+  const match = text.match(/([0-9.]+)\s*\/\s*([0-9.]+)/);
+  if (match) return { teachers: Number(match[1]), tms: Number(match[2]) };
+  const teachers = numericValue(value);
+  return { teachers, tms: null };
+}
+
+function readBranchGrowth(rows) {
+  const headerIndex = rows.findIndex((row) => /week/i.test(String(row[0] || "")));
+  if (headerIndex < 0) return [];
+  const headers = rows[headerIndex];
+  const output = [];
+
+  for (let index = headerIndex + 1; index < rows.length; index += 1) {
+    const row = rows[index];
+    const label = String(row[0] || "").trim();
+    if (!label || /pipeline/i.test(label)) continue;
+    const pipelineRow = rows[index + 1] && /pipeline/i.test(String(rows[index + 1][0] || "")) ? rows[index + 1] : [];
+    const points = [];
+    const pipeline = [];
+
+    for (let col = 1; col < headers.length; col += 1) {
+      const week = String(headers[col] || "").trim();
+      if (!week) continue;
+      const branches = numericValue(row[col]);
+      if (Number.isFinite(branches)) points.push({ week, branches });
+      const pipe = parsePipeline(pipelineRow[col]);
+      if (Number.isFinite(pipe.teachers) || Number.isFinite(pipe.tms)) pipeline.push({ week, ...pipe });
+    }
+
+    if (points.length) {
+      const latest = points.at(-1);
+      const comparison = points.length >= 4 ? points.at(-4) : points[0];
+      const latestPipeline = pipeline.filter((point) => Number.isFinite(point.teachers) || Number.isFinite(point.tms)).at(-1) || {};
+      output.push({
+        rm: normalizeRmName(label),
+        latest,
+        points,
+        fourWeekGrowth: latest.branches - comparison.branches,
+        fourWeekGrowthPct: comparison.branches ? ((latest.branches - comparison.branches) / comparison.branches) * 100 : null,
+        pipelineTeachers: latestPipeline.teachers ?? null,
+        pipelineTms: latestPipeline.tms ?? null,
+      });
+    }
+  }
+
+  return output;
+}
+
+function readPeopleMovement(rows) {
+  const wideHeaderIndex = rows.findIndex((row) => /^rural teachers$/i.test(String(row[0] || "").trim()));
+  if (wideHeaderIndex >= 0) {
+    const header = rows[wideHeaderIndex];
+    const metricRows = new Map();
+    for (const row of rows.slice(wideHeaderIndex + 1)) {
+      const label = String(row[0] || "").trim();
+      if (label) metricRows.set(label.toLowerCase(), row);
+    }
+
+    const employedRow = metricRows.get("employed") || [];
+    const retentionRow = [...metricRows.entries()].find(([label]) => /retention/i.test(label))?.[1] || [];
+    const hiredRow = metricRows.get("hired") || [];
+    const attritionStart = rows.findIndex((row) => /attrition/i.test(String(row[0] || "")));
+    const exitRows = attritionStart >= 0
+      ? rows.slice(attritionStart + 1).filter((row) => {
+        const label = String(row[0] || "").trim();
+        return label && !/bonus/i.test(label);
+      })
+      : [];
+
+    const output = [];
+    for (let col = 1; col < header.length; col += 1) {
+      const week = header[col];
+      const hired = numericValue(hiredRow[col]);
+      const employed = numericValue(employedRow[col]);
+      const retention = numericValue(retentionRow[col]);
+      const exited = exitRows.reduce((sum, row) => {
+        const value = numericValue(row[col]);
+        return Number.isFinite(value) ? sum + value : sum;
+      }, 0);
+      if (week && (Number.isFinite(hired) || Number.isFinite(employed) || exited > 0)) {
+        output.push({
+          week: `Week ${week}`,
+          employed,
+          hired,
+          exited,
+          net: (Number.isFinite(hired) ? hired : 0) - exited,
+          retention: Number.isFinite(retention) ? retention * 100 : null,
+        });
+      }
+    }
+    return output;
+  }
+
+  const headers = rows[0] || [];
+  const weekIndex = headers.findIndex((label) => /week/i.test(String(label)));
+  const hiredIndex = headers.findIndex((label) => /hired/i.test(String(label)));
+  const exitedIndex = headers.findIndex((label) => /exit|attrition/i.test(String(label)));
+  if (weekIndex < 0 || hiredIndex < 0 || exitedIndex < 0) return [];
+
+  return rows.slice(1).map((row) => {
+    const hired = numericValue(row[hiredIndex]);
+    const exited = numericValue(row[exitedIndex]);
+    return {
+      week: row[weekIndex],
+      hired,
+      exited,
+      net: Number.isFinite(hired) && Number.isFinite(exited) ? hired - exited : null,
+    };
+  }).filter((record) => record.week && Number.isFinite(record.net));
+}
+
 async function loadLiveDashboardData() {
   const tables = await Promise.all(SHEET_NAMES.map(async (sheet) => [sheet, tableToRows(await gvizSheet(sheet))]));
   const workbook = Object.fromEntries(tables);
@@ -155,11 +292,17 @@ async function loadLiveDashboardData() {
     areaManagers: wideWeekRows(workbook["AM wise"], { am: 0, sam: 1, rm: 2 }),
     lowAttendance: readLowAttendance(workbook["Low Attednance"]),
     targets: readTargets(workbook.Targets),
+    branchGrowth: readBranchGrowth(workbook["Branch Per RM"] || []),
+    peopleMovement: readPeopleMovement(workbook["Emp Attrition"] || []),
   };
 }
 
 function pct(value) {
   return Number.isFinite(value) ? `${Math.round(value * 10) / 10}%` : "n/a";
+}
+
+function pctRound(value) {
+  return Number.isFinite(value) ? `${Math.round(value)}%` : "n/a";
 }
 
 function signed(value) {
@@ -305,9 +448,9 @@ function renderKpis(areaManagers) {
   const hiredTms = totalHiredTms();
   const branchesPerTm = hiredTms ? activeBranches / hiredTms : null;
   const cards = [
-    [`${latestWeekLabel(areaManagers).replace("Week ", "W")} attendance`, pct(latest), "Latest available weekly attendance"],
-    ["4-week average", pct(fourWeekAvg), fourWeeks.map((point) => `${point.week.replace("Week ", "W")} ${pct(point.value)}`).join(" / ")],
-    ["3-month average", pct(threeMonthAvg), "Rolling 12-week attendance average"],
+    [`${latestWeekLabel(areaManagers).replace("Week ", "W")} attendance`, pctRound(latest), "Latest available weekly attendance"],
+    ["4-week average", pctRound(fourWeekAvg), fourWeeks.map((point) => `${point.week.replace("Week ", "W")} ${pctRound(point.value)}`).join(" / ")],
+    ["3-month average", pctRound(threeMonthAvg), "Rolling 12-week attendance average"],
     ["Active branches", activeBranches.toString(), "Branches with attendance records across FEA"],
     ["Avg branches / hired TM", Number.isFinite(branchesPerTm) ? branchesPerTm.toFixed(1) : "n/a", `${activeBranches} branches / ${hiredTms || "n/a"} hired TMs; 10 expected per TM`],
   ];
@@ -407,8 +550,8 @@ function renderRmMatrix(areaManagers) {
   els.rmMatrix.innerHTML = regionalSummary(areaManagers).map((record, index) => `
     <button class="rm-card ${state.rm === record.rm ? "selected" : ""}" type="button" data-rm="${record.rm}">
       <span class="rm-card-name">${record.rm}</span>
-      <span class="rm-card-score">${pct(record.fourWeekAvg)}</span>
-      <span class="rm-card-meta">1M ${pct(record.fourWeekAvg)} / 3M ${pct(record.threeMonthAvg)}</span>
+      <span class="rm-card-score">${pctRound(record.fourWeekAvg)}</span>
+      <span class="rm-card-meta">1M ${pctRound(record.fourWeekAvg)} / 3M ${pctRound(record.threeMonthAvg)}</span>
     </button>
   `).join("") || `<p class="empty">No regional data found.</p>`;
 
@@ -420,7 +563,87 @@ function renderRmMatrix(areaManagers) {
   });
 }
 
+function renderTeacherGrowthChart() {
+  if (!els.teacherGrowthChart) return;
+
+  const rows = (data.peopleMovement || [])
+    .filter((record) => Number.isFinite(record.employed) && Number.isFinite(record.net))
+    .slice(-12);
+
+  if (!rows.length) {
+    els.teacherGrowthChart.innerHTML = `<p class="empty">Add an Emp Attrition tab with Employed, Hired, and Attrition rows to show teacher hiring growth.</p>`;
+    return;
+  }
+
+  const width = 920;
+  const height = 350;
+  const pad = { top: 38, right: 44, bottom: 72, left: 72 };
+  const chartWidth = width - pad.left - pad.right;
+  const chartHeight = height - pad.top - pad.bottom;
+  const employedValues = rows.map((record) => record.employed);
+  const minEmployed = Math.min(...employedValues);
+  const maxEmployed = Math.max(...employedValues);
+  const employedSpread = Math.max(1, maxEmployed - minEmployed);
+  const employedMin = Math.max(0, minEmployed - employedSpread * 0.18);
+  const employedMax = maxEmployed + employedSpread * 0.18;
+  const maxNet = Math.max(1, ...rows.map((record) => Math.abs(record.net)));
+  const x = (index) => pad.left + (rows.length === 1 ? chartWidth / 2 : (index / (rows.length - 1)) * chartWidth);
+  const y = (value) => pad.top + ((employedMax - value) / (employedMax - employedMin)) * chartHeight;
+  const netBaseY = height - 38;
+  const netScale = 38 / maxNet;
+  const points = rows.map((record, index) => `${x(index).toFixed(1)},${y(record.employed).toFixed(1)}`).join(" ");
+  const ticks = [employedMin, employedMin + (employedMax - employedMin) / 2, employedMax];
+
+  els.teacherGrowthChart.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Teacher hiring growth by week">
+      <defs>
+        <linearGradient id="teacherLineFill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#146eb4" stop-opacity="0.18"></stop>
+          <stop offset="100%" stop-color="#146eb4" stop-opacity="0"></stop>
+        </linearGradient>
+      </defs>
+      ${ticks.map((tick) => `
+        <line class="grid-line" x1="${pad.left}" x2="${width - pad.right}" y1="${y(tick)}" y2="${y(tick)}"></line>
+        <text x="${pad.left - 12}" y="${y(tick) + 4}" text-anchor="end" fill="#6b7280" font-size="11">${Math.round(tick)}</text>
+      `).join("")}
+      <polygon points="${pad.left},${height - pad.bottom} ${points} ${width - pad.right},${height - pad.bottom}" fill="url(#teacherLineFill)"></polygon>
+      <polyline points="${points}" fill="none" stroke="#146eb4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></polyline>
+      <line class="axis" x1="${pad.left}" x2="${width - pad.right}" y1="${netBaseY}" y2="${netBaseY}"></line>
+      ${rows.map((record, index) => {
+        const barHeight = Math.abs(record.net) * netScale;
+        const barY = record.net >= 0 ? netBaseY - barHeight : netBaseY;
+        const fill = record.net >= 0 ? "#047857" : "#b91c1c";
+        return `
+          <circle cx="${x(index)}" cy="${y(record.employed)}" r="4.5" fill="#ffffff" stroke="#146eb4" stroke-width="2">
+            <title>${record.week}: ${record.employed} employed teachers, net ${record.net > 0 ? "+" : ""}${record.net}</title>
+          </circle>
+          <rect x="${x(index) - 8}" y="${barY}" width="16" height="${Math.max(2, barHeight)}" rx="4" fill="${fill}" opacity="0.88"></rect>
+          <text x="${x(index)}" y="${record.net >= 0 ? barY - 6 : barY + barHeight + 14}" text-anchor="middle" fill="${fill}" font-size="11" font-weight="800">${record.net > 0 ? "+" : ""}${record.net}</text>
+          <text x="${x(index)}" y="${height - 12}" text-anchor="middle" fill="#6b7280" font-size="11">${String(record.week).replace("Week ", "W")}</text>
+        `;
+      }).join("")}
+      <text x="${pad.left}" y="20" fill="#146eb4" font-size="12" font-weight="850">Employed teachers</text>
+      <text x="${width - pad.right}" y="20" text-anchor="end" fill="#6b7280" font-size="12" font-weight="750">Bars show net increase</text>
+    </svg>
+  `;
+}
+
 function renderTables(areaManagers) {
+  const branchGrowthRows = (data.branchGrowth || [])
+    .filter((record) => state.rm === "All" || record.rm === state.rm)
+    .sort((a, b) => b.fourWeekGrowth - a.fourWeekGrowth);
+
+  if (els.branchGrowthTable) {
+    els.branchGrowthTable.innerHTML = branchGrowthRows.map((record) => `
+      <tr>
+        <td>${record.rm}</td>
+        <td class="metric">${record.latest.branches}</td>
+        <td class="${record.fourWeekGrowthPct >= 0 ? "positive" : "negative"}">${pct(record.fourWeekGrowthPct)}</td>
+        <td class="metric">${record.pipelineTeachers ?? "n/a"}</td>
+      </tr>
+    `).join("") || `<tr><td colspan="4" class="empty">Add a Branch Per RM tab to the Google Sheet to show branch expansion.</td></tr>`;
+  }
+
   els.rmTable.innerHTML = regionalSummary(areaManagers).map((record) => `
     <tr>
       <td>${record.rm}</td>
@@ -440,13 +663,11 @@ function renderTables(areaManagers) {
         <td class="metric">${index + 1}</td>
         <td>${record.am}</td>
         <td>${statesForAreaManager(record.am)}</td>
-        <td>${record.sam}</td>
         <td>${record.rm}</td>
         <td class="metric">${pct(latestValue(record))}</td>
-        <td class="${toneClass(delta(record))}">${signed(delta(record))}</td>
         <td>${pct(lastNAvg(record, 4))}</td>
       </tr>
-    `).join("") || `<tr><td colspan="8" class="empty">No area manager data found.</td></tr>`;
+    `).join("") || `<tr><td colspan="6" class="empty">No area manager data found.</td></tr>`;
 }
 
 function render() {
@@ -454,6 +675,7 @@ function render() {
   renderKpis(data.areaManagers);
   renderRmMatrix(data.areaManagers);
   renderChart(areaManagers);
+  renderTeacherGrowthChart();
   renderTables(areaManagers);
 }
 
