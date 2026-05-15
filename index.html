@@ -3,50 +3,46 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FEA Health Check</title>
-    <link rel="stylesheet" href="styles.css?v=20260510c" />
+    <title>FEA Performance</title>
+    <link rel="stylesheet" href="styles.css?v=20260515d" />
   </head>
   <body>
     <main class="shell">
       <header class="topbar">
         <div>
-          <h1>FEA Health Check</h1>
+          <h1>FEA Performance</h1>
         </div>
       </header>
 
+      <nav class="view-tabs" aria-label="Dashboard view">
+        <button type="button" data-view-tab="student">Student Capacity Building</button>
+        <button type="button" data-view-tab="staff">Staff Capacity Building</button>
+      </nav>
+
       <section id="kpis" class="kpi-grid" aria-label="Top-line attendance metrics"></section>
 
-      <section class="matrix-row">
+      <section class="matrix-row" data-tab-panel="student">
         <article class="panel matrix-panel">
           <div class="panel-heading">
-            <div>
-              <p class="eyebrow">Regional matrix</p>
-              <h2>RM-wise attendance windows</h2>
-            </div>
+            <h2>Four-Week Attendance</h2>
           </div>
           <div id="rmMatrix" class="rm-matrix"></div>
         </article>
       </section>
 
-      <section class="main-grid">
+      <section class="main-grid" data-tab-panel="student">
         <article class="panel trend-panel">
           <div class="panel-heading">
-            <div>
-              <p class="eyebrow">Trend</p>
-              <h2 id="trendTitle">Performance over time</h2>
-            </div>
+            <h2 id="trendTitle">Performance over time</h2>
             <div id="trendLegend" class="legend"></div>
           </div>
           <div id="trendChart" class="chart"></div>
         </article>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-tab-panel="staff">
         <div class="panel-heading">
-          <div>
-            <p class="eyebrow">Branch expansion</p>
-            <h2>RM-wise branch growth</h2>
-          </div>
+          <h2>RM Branch Growth</h2>
         </div>
         <div class="table-wrap">
           <table>
@@ -56,30 +52,39 @@
                 <th>Active branches</th>
                 <th>4W growth %</th>
                 <th>Pipeline teachers</th>
+                <th>December 2026 milestone</th>
               </tr>
             </thead>
             <tbody id="branchGrowthTable"></tbody>
           </table>
         </div>
+        <div class="table-wrap branch-detail-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Area Manager</th>
+                <th>Current branches</th>
+                <th>4W growth %</th>
+              </tr>
+            </thead>
+            <tbody id="branchAmGrowthTable">
+              <tr><td colspan="3" class="empty">Select an RM above to view Area Manager branch detail.</td></tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
-      <section class="panel">
+      <section class="panel" data-tab-panel="staff">
         <div class="panel-heading">
-          <div>
-            <p class="eyebrow">Teacher hiring growth</p>
-            <h2>Employed teachers and net increase</h2>
-          </div>
+          <h2>Teaching Staff Net Increase</h2>
         </div>
         <div id="teacherGrowthChart" class="chart teacher-growth-chart"></div>
       </section>
 
       <section class="split-grid">
-        <article class="panel">
+        <article class="panel" data-tab-panel="staff">
           <div class="panel-heading">
-            <div>
-              <p class="eyebrow">Management capacity</p>
-              <h2>Management Capacity Building</h2>
-            </div>
+            <h2>Management Capacity Building</h2>
           </div>
           <div class="table-wrap">
             <table>
@@ -87,9 +92,8 @@
                 <tr>
                   <th>RM</th>
                   <th>Vacancies %</th>
-                  <th>No. of SAMs</th>
-                  <th>No. of AMs</th>
-                  <th>No. of TMs</th>
+                  <th>AMs</th>
+                  <th>TMs</th>
                   <th>Vacant TM capacity</th>
                 </tr>
               </thead>
@@ -98,12 +102,9 @@
           </div>
         </article>
 
-        <article class="panel">
+        <article class="panel" data-tab-panel="student">
           <div class="panel-heading">
-            <div>
-              <p class="eyebrow">Area view</p>
-              <h2>Area manager performance</h2>
-            </div>
+            <h2>Area Manager Performance</h2>
           </div>
           <div class="table-wrap">
             <table>
@@ -126,6 +127,6 @@
 
     <script src="dashboard-data.js?v=20260513a"></script>
     <script src="branch-structure.js?v=20260513a"></script>
-    <script src="app.js?v=20260513d"></script>
+    <script src="app.js?v=20260515f"></script>
   </body>
 </html>

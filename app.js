@@ -1,10 +1,25 @@
 let data = window.DASHBOARD_DATA;
 const branchStructure = window.BRANCH_STRUCTURE || { regionalManagers: {} };
+const indiaStates = window.INDIA_STATES_GEOJSON || { features: [] };
 const SPREADSHEET_ID = "11kof2bCLpS-q7WFQdFM0_jkxp0mB3_vUA0bo_hM8wgQ";
+const OPERATIONS_URL = "http://103.27.234.18:8080/rmwisebranch.aspx";
 const SHEET_NAMES = ["Overall", "AM wise", "SAM wise", "RM wise", "Low Attednance", "Targets", "Branch Per RM", "Emp Attrition"];
+const DECEMBER_2026_MILESTONES = {
+  "Ankita Srivastava": 290,
+  "Darshana Vishwakarma": 500,
+  "Deepak Verma": 600,
+  "Manikant Mishra": 450,
+  "Mukesh Upadhyay": 400,
+  "Surbhi Chaudhary": 320,
+  Total: 2560,
+};
 
 const state = {
   rm: "All",
+  activeTab: "student",
+  selectedBranchRm: null,
+  selectedCapacityRm: null,
+  selectedTeacherWeek: null,
 };
 
 const els = {
@@ -12,10 +27,13 @@ const els = {
   trendTitle: document.querySelector("#trendTitle"),
   trendChart: document.querySelector("#trendChart"),
   trendLegend: document.querySelector("#trendLegend"),
+  heatmapTitle: document.querySelector("#heatmapTitle"),
+  attendanceHeatmap: document.querySelector("#attendanceHeatmap"),
   rmMatrix: document.querySelector("#rmMatrix"),
   rmTable: document.querySelector("#rmTable"),
   amTable: document.querySelector("#amTable"),
   branchGrowthTable: document.querySelector("#branchGrowthTable"),
+  branchAmGrowthTable: document.querySelector("#branchAmGrowthTable"),
   teacherGrowthChart: document.querySelector("#teacherGrowthChart"),
 };
 
@@ -66,6 +84,108 @@ function tableToRows(table) {
     return values;
   });
   return [headers, ...rows].filter((row) => row.some((value) => String(value).trim() !== ""));
+}
+
+function htmlTableToRecords(table) {
+  const rows = [...table.querySelectorAll("tr")].map((row) =>
+    [...row.querySelectorAll("th,td")].map((cell) => cell.textContent.replace(/\u00a0/g, " ").trim()),
+  ).filter((row) => row.some(Boolean));
+  const headers = rows[0] || [];
+  return rows.slice(1).map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] || ""])));
+}
+
+function fieldNumber(record, field) {
+  return numericValue(record?.[field]);
+}
+
+function readOperationsPage(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const tables = [...doc.querySelectorAll("table")];
+  const rmRecords = htmlTableToRecords(tables.find((table) => table.id === "GridView2") || tables[0] || document.createElement("table"));
+  const amRecords = htmlTableToRecords(tables.find((table) => table.id === "GridView1") || tables[1] || document.createElement("table"));
+  const rmRows = rmRecords.filter((record) => record.RM && record.RM.toLowerCase() !== "total");
+  const totalRow = rmRecords.find((record) => String(record.RM || "").toLowerCase() === "total");
+  const summary = {
+    ams: fieldNumber(totalRow, "AMs"),
+    tms: fieldNumber(totalRow, "TMs"),
+    branches: fieldNumber(totalRow, "Branches"),
+    branchesWithLaptop: fieldNumber(totalRow, "Branchwithlaptop"),
+    laptops: fieldNumber(totalRow, "Laptops"),
+    tablets: fieldNumber(totalRow, "Tablets and Jio Book"),
+    datacards: fieldNumber(totalRow, "datacard"),
+    trolleys: fieldNumber(totalRow, "Trolly"),
+    cameras: fieldNumber(totalRow, "Camera"),
+    airfiber: fieldNumber(totalRow, "airfiber"),
+  };
+
+  const ams = amRecords.filter((record) => record.AM).map((record) => {
+    const branches = fieldNumber(record, "Branches");
+    const laptops = fieldNumber(record, "Laptops") || 0;
+    const tablets = fieldNumber(record, "Tablets and Jio Book") || 0;
+    return {
+      am: record.AM,
+      rm: record.RM,
+      sam: record.SAM,
+      tms: fieldNumber(record, "TMs"),
+      branches,
+      branchesWithLaptop: fieldNumber(record, "Branchwithlaptop"),
+      laptops,
+      tablets,
+      devices: laptops + tablets,
+      devicesPerBranch: branches ? (laptops + tablets) / branches : null,
+      datacards: fieldNumber(record, "datacard"),
+      trolleys: fieldNumber(record, "Trolly"),
+      cameras: fieldNumber(record, "Camera"),
+      airfiber: fieldNumber(record, "airfiber"),
+    };
+  });
+
+  const rmSummary = Object.fromEntries(rmRows.map((record) => [record.RM, {
+    rm: record.RM,
+    ams: fieldNumber(record, "AMs"),
+    tms: fieldNumber(record, "TMs"),
+    branches: fieldNumber(record, "Branches"),
+    branchesWithLaptop: fieldNumber(record, "Branchwithlaptop"),
+    laptops: fieldNumber(record, "Laptops"),
+    tablets: fieldNumber(record, "Tablets and Jio Book"),
+    devices: (fieldNumber(record, "Laptops") || 0) + (fieldNumber(record, "Tablets and Jio Book") || 0),
+    datacards: fieldNumber(record, "datacard"),
+    trolleys: fieldNumber(record, "Trolly"),
+    cameras: fieldNumber(record, "Camera"),
+    airfiber: fieldNumber(record, "airfiber"),
+  }]));
+
+  const enrollment = readEnrollmentFromOperationsTables(tables);
+  return { sourceUrl: OPERATIONS_URL, summary, rmSummary, ams, enrollment };
+}
+
+function readEnrollmentFromOperationsTables(tables) {
+  for (const table of tables) {
+    const records = htmlTableToRecords(table);
+    if (!records.length) continue;
+    const headers = Object.keys(records[0]);
+    const hasEnrollment = headers.some((header) => /enrol|student/i.test(header));
+    if (!hasEnrollment) continue;
+    const total = records.find((record) => /total|overall/i.test(Object.values(record).join(" "))) || records.at(-1);
+    const enrolledKey = headers.find((header) => /enrol|student/i.test(header) && !/%|percent|capacity/i.test(header));
+    const capacityKey = headers.find((header) => /capacity/i.test(header));
+    const pctKey = headers.find((header) => /%|percent/i.test(header));
+    const enrolled = fieldNumber(total, enrolledKey);
+    const capacity = fieldNumber(total, capacityKey);
+    const pctValue = fieldNumber(total, pctKey);
+    return {
+      enrolled,
+      capacity,
+      pct: Number.isFinite(pctValue) ? pctValue : (Number.isFinite(enrolled) && Number.isFinite(capacity) && capacity > 0 ? (enrolled / capacity) * 100 : null),
+    };
+  }
+  return null;
+}
+
+async function loadOperationsData() {
+  const response = await fetch(OPERATIONS_URL, { cache: "no-store" });
+  if (!response.ok) throw new Error(`Could not load operations page: ${response.status}`);
+  return readOperationsPage(await response.text());
 }
 
 function cleanNumber(value) {
@@ -161,6 +281,48 @@ function normalizeRmName(label) {
   if (/mukesh/i.test(text)) return "Mukesh Upadhyay";
   if (/darshana/i.test(text)) return "Darshana V";
   return text.split(",")[0].trim();
+}
+
+function canonicalRmName(rm) {
+  const text = normalizeRmName(rm);
+  if (/darshana/i.test(text)) return "Darshana Vishwakarma";
+  return text;
+}
+
+function milestoneForRm(rm) {
+  return DECEMBER_2026_MILESTONES[canonicalRmName(rm)] ?? null;
+}
+
+function monthsUntilDecember2026() {
+  const now = new Date();
+  const target = new Date(2026, 11, 31);
+  if (now >= target) return 0;
+  return Math.max(1, (target.getFullYear() - now.getFullYear()) * 12 + target.getMonth() - now.getMonth() + 1);
+}
+
+function milestoneStatus(record) {
+  const milestone = milestoneForRm(record.rm);
+  const activeBranches = data.operations?.rmSummary?.[record.rm]?.branches ?? record.latest?.branches;
+  if (!Number.isFinite(milestone)) return { value: "n/a", note: "Milestone not set", className: "muted-cell" };
+  if (!Number.isFinite(activeBranches)) return { value: milestone.toString(), note: "Waiting for active branch count", className: "muted-cell" };
+
+  const remaining = Math.max(0, milestone - activeBranches);
+  const requiredMonthly = remaining / monthsUntilDecember2026();
+  const recentMonthly = Number.isFinite(record.fourWeekGrowth) ? record.fourWeekGrowth : null;
+  if (!Number.isFinite(recentMonthly)) {
+    return { value: milestone.toString(), note: `${remaining} remaining`, className: "muted-cell" };
+  }
+
+  const onTrack = recentMonthly >= requiredMonthly;
+  return {
+    value: milestone.toString(),
+    note: `${onTrack ? "On track" : "Behind"}: +${Math.round(requiredMonthly)} / month needed`,
+    className: onTrack ? "positive" : "negative",
+  };
+}
+
+function tmVacanciesForAreaManager(tms) {
+  return Number.isFinite(tms) ? Math.max(0, 10 - tms) : null;
 }
 
 function parsePipeline(value) {
@@ -350,24 +512,54 @@ function targetFor(rm, sam) {
 }
 
 function branchCountsForRm(rm) {
+  const live = data.operations?.rmSummary?.[rm];
   const record = branchStructure.regionalManagers?.[rm];
   return {
-    branches: record?.branches?.length ?? null,
-    ams: record?.areaManagers?.length ?? null,
-    tms: record?.tms?.length ?? null,
+    branches: live?.branches ?? record?.branches?.length ?? null,
+    ams: live?.ams ?? record?.areaManagers?.length ?? null,
+    tms: live?.tms ?? record?.tms?.length ?? null,
     atms: record?.atms?.length ?? null,
   };
 }
 
 function totalActiveBranches() {
+  if (Number.isFinite(data.operations?.summary?.branches)) return data.operations.summary.branches;
   const branchLists = Object.values(branchStructure.regionalManagers || {}).flatMap((record) => record.branches || []);
   if (branchLists.length) return unique(branchLists).length;
   return unique(data.lowAttendance.map((record) => record.center)).length;
 }
 
 function totalHiredTms() {
+  if (Number.isFinite(data.operations?.summary?.tms)) return data.operations.summary.tms;
   const tmLists = Object.values(branchStructure.regionalManagers || {}).flatMap((record) => record.tms || []);
   return unique(tmLists).length;
+}
+
+function latestStudentCapacityPct() {
+  return data.operations?.enrollment?.pct ?? null;
+}
+
+function deviceGapSummary() {
+  const rows = data.operations?.ams || [];
+  const weak = rows.filter((record) => Number.isFinite(record.devicesPerBranch) && record.devicesPerBranch < 15);
+  return {
+    ams: weak.length,
+    tms: weak.reduce((sum, record) => sum + (record.tms || 0), 0),
+  };
+}
+
+function latestPeopleMovement() {
+  return (data.peopleMovement || [])
+    .filter((record) => Number.isFinite(record.employed) || Number.isFinite(record.net))
+    .at(-1) || {};
+}
+
+function totalTmCapacityGap() {
+  const activeBranches = totalActiveBranches();
+  const hiredTms = totalHiredTms();
+  return Number.isFinite(activeBranches) && Number.isFinite(hiredTms)
+    ? Math.max(0, Math.ceil(activeBranches / 10) - hiredTms)
+    : null;
 }
 
 function latestWeekLabel(areaManagers) {
@@ -381,6 +573,21 @@ function areaManagerDetails(am) {
 function statesForAreaManager(am) {
   const states = areaManagerDetails(am).states || [];
   return states.length ? states.join(", ") : "n/a";
+}
+
+function normalizeStateName(state) {
+  const value = String(state || "").trim().toLowerCase();
+  const aliases = {
+    pb: "Punjab",
+    "nct of delhi": "Delhi",
+    "andaman and nicobar": "Andaman and Nicobar",
+    "dadra and nagar haveli": "Dadra and Nagar Haveli",
+    "daman and diu": "Daman and Diu",
+    odisha: "Orissa",
+    uttarakhand: "Uttaranchal",
+  };
+  if (aliases[value]) return aliases[value];
+  return String(state || "").trim();
 }
 
 function regionalSummary(areaManagers) {
@@ -447,13 +654,24 @@ function renderKpis(areaManagers) {
   const activeBranches = totalActiveBranches();
   const hiredTms = totalHiredTms();
   const branchesPerTm = hiredTms ? activeBranches / hiredTms : null;
-  const cards = [
-    [`${latestWeekLabel(areaManagers).replace("Week ", "W")} attendance`, pctRound(latest), "Latest available weekly attendance"],
-    ["4-week average", pctRound(fourWeekAvg), fourWeeks.map((point) => `${point.week.replace("Week ", "W")} ${pctRound(point.value)}`).join(" / ")],
-    ["3-month average", pctRound(threeMonthAvg), "Rolling 12-week attendance average"],
-    ["Active branches", activeBranches.toString(), "Branches with attendance records across FEA"],
-    ["Avg branches / hired TM", Number.isFinite(branchesPerTm) ? branchesPerTm.toFixed(1) : "n/a", `${activeBranches} branches / ${hiredTms || "n/a"} hired TMs; 10 expected per TM`],
+  const studentCapacityPct = latestStudentCapacityPct();
+  const totalStudentCapacity = data.operations?.enrollment?.capacity ?? activeBranches * 60;
+  const currentStudents = data.operations?.enrollment?.enrolled ?? (Number.isFinite(studentCapacityPct) ? Math.round((studentCapacityPct / 100) * totalStudentCapacity) : null);
+  const people = latestPeopleMovement();
+  const studentCards = [
+    [`${latestWeekLabel(areaManagers).replace("Week ", "W ")} Attendance`, pctRound(latest), "Latest available weekly attendance"],
+    ["4-Week Average", pctRound(fourWeekAvg), fourWeeks.map((point) => `${point.week.replace("Week ", "W ")} ${pctRound(point.value)}`).join(" / ")],
+    ["3-Month Average", pctRound(threeMonthAvg), "Rolling 12-week attendance average"],
+    ["Enrolment %", pctRound(studentCapacityPct), Number.isFinite(currentStudents) ? `${currentStudents} students / ${totalStudentCapacity} capacity` : `${totalStudentCapacity} capacity from ${activeBranches} branches; waiting for enrolment table`],
+    ["Active Branches", activeBranches.toString(), data.operations ? "Live branch count from operations page" : "Branches with attendance records across FEA"],
   ];
+  const staffCards = [
+    ["Teaching Staff", Number.isFinite(people.employed) ? people.employed.toString() : "n/a", people.week ? `${people.week} employed teaching staff` : "Waiting for staff movement data"],
+    ["Net Increase", Number.isFinite(people.net) ? `${people.net > 0 ? "+" : ""}${people.net}` : "n/a", people.week ? `${people.week}: ${Number.isFinite(people.hired) ? `${people.hired} hired` : "hiring n/a"} / ${Number.isFinite(people.exited) ? `${people.exited} exited` : "exits n/a"}` : "Latest hired minus exited"],
+    ["Branches / TM", Number.isFinite(branchesPerTm) ? branchesPerTm.toFixed(1) : "n/a", `${activeBranches} branches / ${hiredTms || "n/a"} TMs; 10 expected per TM`],
+    ["Total branches with less than 15 devices", "n/a", "Waiting for branch-level device data"],
+  ];
+  const cards = state.activeTab === "staff" ? staffCards : studentCards;
 
   els.kpis.innerHTML = cards
     .map(([label, value, note]) => `
@@ -497,7 +715,7 @@ function renderChart(areaManagers) {
   `;
   els.trendTitle.textContent = state.rm !== "All"
     ? `${state.rm} - area manager ranking`
-    : "Regional 4-week attendance ranking";
+    : "Regional Four-Week Attendance Ranking";
 
   if (!rows.length) {
     els.trendChart.innerHTML = `<p class="empty">No trend data available for the current filter.</p>`;
@@ -546,6 +764,81 @@ function toneClass(value) {
   return "neutral";
 }
 
+function heatmapClass(value) {
+  if (!Number.isFinite(value)) return "empty";
+  if (value < 50) return "critical";
+  if (value < 60) return "warning";
+  if (value < 70) return "steady";
+  return "strong";
+}
+
+function escapeAttr(value) {
+  return String(value || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function geometryCoordinates(geometry) {
+  if (!geometry) return [];
+  if (geometry.type === "Polygon") return geometry.coordinates;
+  if (geometry.type === "MultiPolygon") return geometry.coordinates.flat();
+  return [];
+}
+
+function flattenCoordinates(geometry) {
+  return geometryCoordinates(geometry).flat();
+}
+
+function geoPath(geometry, project) {
+  return geometryCoordinates(geometry)
+    .map((ring) => {
+      const points = ring.map(([lon, lat]) => project(lon, lat));
+      if (!points.length) return "";
+      return `M ${points.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join(" L ")} Z`;
+    })
+    .join(" ");
+}
+
+function geoLabelPoint(geometry, project) {
+  const points = flattenCoordinates(geometry).map(([lon, lat]) => project(lon, lat));
+  if (!points.length) return null;
+  const xs = points.map(([x]) => x);
+  const ys = points.map(([, y]) => y);
+  return [
+    (Math.min(...xs) + Math.max(...xs)) / 2,
+    (Math.min(...ys) + Math.max(...ys)) / 2,
+  ];
+}
+
+function clusterPoint(center, index, total) {
+  if (!center) return null;
+  if (total <= 1) return center;
+  const ring = Math.ceil((Math.sqrt(index + 1) - 1) / 2);
+  const ringStart = Math.max(0, (2 * ring - 1) ** 2);
+  const position = index - ringStart;
+  const ringCount = Math.max(1, (2 * ring + 1) ** 2 - ringStart);
+  const angle = (position / ringCount) * Math.PI * 2 - Math.PI / 2;
+  const radius = 20 + ring * 18;
+  return [
+    center[0] + Math.cos(angle) * radius,
+    center[1] + Math.sin(angle) * radius,
+  ];
+}
+
+function initials(name) {
+  return String(name || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+}
+
 function renderRmMatrix(areaManagers) {
   els.rmMatrix.innerHTML = regionalSummary(areaManagers).map((record, index) => `
     <button class="rm-card ${state.rm === record.rm ? "selected" : ""}" type="button" data-rm="${record.rm}">
@@ -556,9 +849,239 @@ function renderRmMatrix(areaManagers) {
   `).join("") || `<p class="empty">No regional data found.</p>`;
 
   els.rmMatrix.querySelectorAll(".rm-card").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.onclick = () => {
       state.rm = state.rm === button.dataset.rm ? "All" : button.dataset.rm;
       render();
+    };
+  });
+}
+
+function renderAttendanceHeatmap(areaManagers) {
+  if (!els.attendanceHeatmap) return;
+
+  els.heatmapTitle.textContent = state.rm === "All"
+    ? `India map by last ${mapWindowLabel()} attendance`
+    : `India map under ${state.rm} - last ${mapWindowLabel()}`;
+
+  if (!indiaStates.features.length) {
+    els.attendanceHeatmap.innerHTML = `<p class="empty">India map boundary data is not available.</p>`;
+    return;
+  }
+
+  const stateMetrics = new Map();
+  for (const record of areaManagers) {
+    const value = lastNAvg(record, state.mapWindow);
+    const states = areaManagerDetails(record.am).states || [];
+    for (const stateName of states) {
+      const normalized = normalizeStateName(stateName);
+      if (!normalized || !Number.isFinite(value)) continue;
+      if (!stateMetrics.has(normalized)) {
+        stateMetrics.set(normalized, { values: [], ams: new Set(), rms: new Set() });
+      }
+      const metric = stateMetrics.get(normalized);
+      metric.values.push(value);
+      metric.ams.add(record.am);
+      metric.rms.add(record.rm);
+      if (!metric.amRecords) metric.amRecords = [];
+      metric.amRecords.push(record);
+    }
+  }
+
+  const stateSummary = new Map([...stateMetrics.entries()].map(([name, metric]) => [name, {
+    avg: avg(metric.values),
+    ams: metric.ams.size,
+    rms: [...metric.rms],
+    amRecords: metric.amRecords || [],
+  }]));
+
+  const coords = indiaStates.features.flatMap((feature) => flattenCoordinates(feature.geometry));
+  const lons = coords.map(([lon]) => lon);
+  const lats = coords.map(([, lat]) => lat);
+  const minLon = Math.min(...lons);
+  const maxLon = Math.max(...lons);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const width = 720;
+  const height = 760;
+  const pad = 28;
+  const scale = Math.min((width - pad * 2) / (maxLon - minLon), (height - pad * 2) / (maxLat - minLat));
+  const mapWidth = (maxLon - minLon) * scale;
+  const mapHeight = (maxLat - minLat) * scale;
+  const offsetX = (width - mapWidth) / 2;
+  const offsetY = (height - mapHeight) / 2;
+  const project = (lon, lat) => [
+    offsetX + (lon - minLon) * scale,
+    offsetY + (maxLat - lat) * scale,
+  ];
+  const weakestStates = [...stateSummary.entries()]
+    .filter(([, metric]) => Number.isFinite(metric.avg))
+    .sort((a, b) => a[1].avg - b[1].avg)
+    .slice(0, 6);
+  const selectedState = state.selectedMapState && stateSummary.has(state.selectedMapState)
+    ? state.selectedMapState
+    : null;
+  const selectedMetric = selectedState ? stateSummary.get(selectedState) : null;
+  const selectedAms = selectedMetric
+    ? selectedMetric.amRecords
+      .slice()
+      .sort((a, b) => lastNAvg(a, state.mapWindow) - lastNAvg(b, state.mapWindow))
+    : [];
+  const mapFeatures = indiaStates.features.map((feature) => {
+    const stateName = normalizeStateName(feature.properties?.name);
+    const metric = stateSummary.get(stateName);
+    const value = metric?.avg;
+    const ams = metric?.amRecords
+      ?.slice()
+      .sort((a, b) => lastNAvg(a, state.mapWindow) - lastNAvg(b, state.mapWindow))
+      .map((record) => `${record.am}: ${pctRound(lastNAvg(record, state.mapWindow))}`)
+      .join(" | ") || "";
+    return {
+      feature,
+      stateName,
+      metric,
+      value,
+      labelPoint: Number.isFinite(value) ? geoLabelPoint(feature.geometry, project) : null,
+      tooltip: Number.isFinite(value)
+        ? `${stateName} - ${pct(value)} / ${metric.ams} AMs / ${ams}`
+        : `${stateName}: no FEA attendance data mapped`,
+    };
+  });
+  const homeStateAms = new Map();
+  for (const record of areaManagers) {
+    const homeState = normalizeStateName((areaManagerDetails(record.am).states || [])[0]);
+    const value = lastNAvg(record, state.mapWindow);
+    if (!homeState || !Number.isFinite(value) || !stateSummary.has(homeState)) continue;
+    if (!homeStateAms.has(homeState)) homeStateAms.set(homeState, []);
+    homeStateAms.get(homeState).push({ record, value });
+  }
+  const mapNodes = mapFeatures.flatMap((item) => {
+    const center = item.labelPoint;
+    const ams = (homeStateAms.get(item.stateName) || [])
+      .slice()
+      .sort((a, b) => a.value - b.value);
+    return ams.map((am, index) => ({
+      ...am,
+      stateName: item.stateName,
+      point: clusterPoint(center, index, ams.length),
+    })).filter((node) => node.point);
+  });
+
+  els.attendanceHeatmap.innerHTML = `
+    <div class="geo-map-layout">
+      <div class="india-map-wrap">
+        <div class="geo-hover-card" hidden></div>
+        <svg class="india-map" viewBox="0 0 ${width} ${height}" role="img" aria-label="India attendance heat map by state">
+          ${mapFeatures.map(({ feature, stateName, value, tooltip }) => `
+              <path class="india-state ${heatmapClass(value)} ${stateName === selectedState ? "selected" : ""}" data-state="${escapeAttr(stateName)}" data-tooltip="${escapeAttr(tooltip)}" tabindex="0" d="${geoPath(feature.geometry, project)}">
+                <title>${tooltip}</title>
+              </path>
+          `).join("")}
+          ${mapNodes.map(({ record, value, stateName, point }) => `
+            <g class="am-map-node" data-state="${escapeAttr(stateName)}" data-tooltip="${escapeAttr(`${record.am} - ${pct(value)} / ${record.rm} / ${stateName}`)}" tabindex="0" transform="translate(${point[0].toFixed(1)} ${point[1].toFixed(1)})">
+              <circle class="${heatmapClass(value)}" r="15"></circle>
+              <text y="4">${Math.round(value)}</text>
+              <title>${record.am}: ${pct(value)} / ${record.rm} / ${stateName}</title>
+            </g>
+          `).join("")}
+        </svg>
+      </div>
+      <div class="geo-map-panel">
+        <p class="geo-map-note">State color shows the selected-period average. Each dot is one Area Manager placed in their home territory; dot color and number show that AM's attendance.</p>
+        ${selectedState ? `
+          <div class="geo-detail-heading">
+            <div>
+              <span>${selectedState}</span>
+              <small>${selectedMetric.ams} AMs / ${selectedMetric.rms.join(", ")}</small>
+            </div>
+            <strong class="${heatmapClass(selectedMetric.avg)}">${pctRound(selectedMetric.avg)}</strong>
+          </div>
+          <div class="geo-am-list">
+            ${selectedAms.map((record) => {
+              const value = lastNAvg(record, state.mapWindow);
+              return `
+                <div class="geo-am-row">
+                  <div>
+                    <span>${record.am}</span>
+                    <small>${record.rm}</small>
+                  </div>
+                  <strong class="${heatmapClass(value)}">${pctRound(value)}</strong>
+                </div>
+              `;
+            }).join("")}
+          </div>
+          <button class="geo-clear" type="button" data-clear-state>Show weakest states</button>
+        ` : `
+          <div class="geo-state-list">
+            ${weakestStates.map(([name, metric]) => `
+              <button class="geo-state-card" type="button" data-state-card="${escapeAttr(name)}">
+                <span>${name}</span>
+                <strong class="${heatmapClass(metric.avg)}">${pctRound(metric.avg)}</strong>
+                <small>${metric.ams} AMs / ${metric.rms.join(", ")}</small>
+              </button>
+            `).join("") || `<p class="empty">No states are mapped to current attendance data.</p>`}
+          </div>
+        `}
+      </div>
+    </div>
+  `;
+
+  els.attendanceHeatmap.querySelectorAll("[data-state], [data-state-card]").forEach((item) => {
+    item.addEventListener("click", () => {
+      const clickedState = item.dataset.state || item.dataset.stateCard;
+      if (!stateSummary.has(clickedState)) return;
+      state.selectedMapState = clickedState;
+      render();
+    });
+    item.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      item.click();
+    });
+  });
+
+  const clearButton = els.attendanceHeatmap.querySelector("[data-clear-state]");
+  if (clearButton) {
+    clearButton.addEventListener("click", () => {
+      state.selectedMapState = null;
+      render();
+    });
+  }
+
+  document.querySelectorAll("[data-map-window]").forEach((button) => {
+    const weeks = Number(button.dataset.mapWindow);
+    button.classList.toggle("selected", weeks === state.mapWindow);
+    button.addEventListener("click", () => {
+      state.mapWindow = weeks;
+      state.selectedMapState = null;
+      render();
+    });
+  });
+
+  const hoverCard = els.attendanceHeatmap.querySelector(".geo-hover-card");
+  els.attendanceHeatmap.querySelectorAll(".india-state, .am-map-node").forEach((item) => {
+    const showTooltip = () => {
+      if (!hoverCard || !item.dataset.tooltip) return;
+      hoverCard.hidden = false;
+      const [title, ...details] = item.dataset.tooltip.split(" / ");
+      hoverCard.innerHTML = `
+        <strong>${escapeHtml(title)}</strong>
+        ${details.map((line) => `<span>${escapeHtml(line)}</span>`).join("")}
+      `;
+    };
+    const moveTooltip = (event) => {
+      if (!hoverCard) return;
+      const bounds = els.attendanceHeatmap.querySelector(".india-map-wrap").getBoundingClientRect();
+      hoverCard.style.left = `${Math.min(bounds.width - 230, Math.max(12, event.clientX - bounds.left + 14))}px`;
+      hoverCard.style.top = `${Math.min(bounds.height - 110, Math.max(12, event.clientY - bounds.top + 14))}px`;
+    };
+    item.addEventListener("mouseenter", showTooltip);
+    item.addEventListener("mousemove", moveTooltip);
+    item.addEventListener("mouseleave", () => {
+      if (hoverCard) hoverCard.hidden = true;
+    });
+    item.addEventListener("focus", showTooltip);
+    item.addEventListener("blur", () => {
+      if (hoverCard) hoverCard.hidden = true;
     });
   });
 }
@@ -575,9 +1098,13 @@ function renderTeacherGrowthChart() {
     return;
   }
 
+  if (!rows.some((record) => record.week === state.selectedTeacherWeek)) {
+    state.selectedTeacherWeek = rows.at(-1)?.week;
+  }
+  const selected = rows.find((record) => record.week === state.selectedTeacherWeek) || rows.at(-1);
   const width = 920;
-  const height = 350;
-  const pad = { top: 38, right: 44, bottom: 72, left: 72 };
+  const height = 380;
+  const pad = { top: 44, right: 48, bottom: 78, left: 78 };
   const chartWidth = width - pad.left - pad.right;
   const chartHeight = height - pad.top - pad.bottom;
   const employedValues = rows.map((record) => record.employed);
@@ -589,17 +1116,20 @@ function renderTeacherGrowthChart() {
   const maxNet = Math.max(1, ...rows.map((record) => Math.abs(record.net)));
   const x = (index) => pad.left + (rows.length === 1 ? chartWidth / 2 : (index / (rows.length - 1)) * chartWidth);
   const y = (value) => pad.top + ((employedMax - value) / (employedMax - employedMin)) * chartHeight;
-  const netBaseY = height - 38;
-  const netScale = 38 / maxNet;
+  const netBaseY = height - 44;
+  const netScale = 56 / maxNet;
   const points = rows.map((record, index) => `${x(index).toFixed(1)},${y(record.employed).toFixed(1)}`).join(" ");
   const ticks = [employedMin, employedMin + (employedMax - employedMin) / 2, employedMax];
+  const selectedIndex = rows.findIndex((record) => record.week === selected.week);
+  const selectedX = x(Math.max(0, selectedIndex));
+  const selectedY = y(selected.employed);
 
   els.teacherGrowthChart.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Teacher hiring growth by week">
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Teaching staff net increase by week">
       <defs>
         <linearGradient id="teacherLineFill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stop-color="#146eb4" stop-opacity="0.18"></stop>
-          <stop offset="100%" stop-color="#146eb4" stop-opacity="0"></stop>
+          <stop offset="0%" stop-color="#3b6ea8" stop-opacity="0.2"></stop>
+          <stop offset="100%" stop-color="#3b6ea8" stop-opacity="0"></stop>
         </linearGradient>
       </defs>
       ${ticks.map((tick) => `
@@ -607,53 +1137,156 @@ function renderTeacherGrowthChart() {
         <text x="${pad.left - 12}" y="${y(tick) + 4}" text-anchor="end" fill="#6b7280" font-size="11">${Math.round(tick)}</text>
       `).join("")}
       <polygon points="${pad.left},${height - pad.bottom} ${points} ${width - pad.right},${height - pad.bottom}" fill="url(#teacherLineFill)"></polygon>
-      <polyline points="${points}" fill="none" stroke="#146eb4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></polyline>
+      <polyline points="${points}" fill="none" stroke="#3b6ea8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></polyline>
       <line class="axis" x1="${pad.left}" x2="${width - pad.right}" y1="${netBaseY}" y2="${netBaseY}"></line>
       ${rows.map((record, index) => {
         const barHeight = Math.abs(record.net) * netScale;
         const barY = record.net >= 0 ? netBaseY - barHeight : netBaseY;
-        const fill = record.net >= 0 ? "#047857" : "#b91c1c";
+        const fill = record.net >= 0 ? "#0f766e" : "#b42318";
+        const selectedClass = record.week === selected.week ? " selected" : "";
         return `
-          <circle cx="${x(index)}" cy="${y(record.employed)}" r="4.5" fill="#ffffff" stroke="#146eb4" stroke-width="2">
+          <g class="teacher-week${selectedClass}" tabindex="0" role="button" data-staff-week="${escapeAttr(record.week)}">
             <title>${record.week}: ${record.employed} employed teachers, net ${record.net > 0 ? "+" : ""}${record.net}</title>
-          </circle>
-          <rect x="${x(index) - 8}" y="${barY}" width="16" height="${Math.max(2, barHeight)}" rx="4" fill="${fill}" opacity="0.88"></rect>
-          <text x="${x(index)}" y="${record.net >= 0 ? barY - 6 : barY + barHeight + 14}" text-anchor="middle" fill="${fill}" font-size="11" font-weight="800">${record.net > 0 ? "+" : ""}${record.net}</text>
-          <text x="${x(index)}" y="${height - 12}" text-anchor="middle" fill="#6b7280" font-size="11">${String(record.week).replace("Week ", "W")}</text>
+            <rect x="${x(index) - 14}" y="${pad.top - 8}" width="28" height="${height - pad.top - 20}" rx="12" fill="transparent"></rect>
+            <rect class="teacher-net-bar" x="${x(index) - 10}" y="${barY}" width="20" height="${Math.max(4, barHeight)}" rx="5" fill="${fill}"></rect>
+            <circle class="teacher-point" cx="${x(index)}" cy="${y(record.employed)}" r="5.5" fill="#ffffff" stroke="#3b6ea8" stroke-width="2.5"></circle>
+            <text x="${x(index)}" y="${record.net >= 0 ? barY - 7 : barY + barHeight + 15}" text-anchor="middle" fill="${fill}" font-size="12" font-weight="900">${record.net > 0 ? "+" : ""}${record.net}</text>
+            <text x="${x(index)}" y="${height - 13}" text-anchor="middle" fill="#4b5563" font-size="12" font-weight="750">${String(record.week).replace("Week ", "W")}</text>
+          </g>
         `;
       }).join("")}
-      <text x="${pad.left}" y="20" fill="#146eb4" font-size="12" font-weight="850">Employed teachers</text>
-      <text x="${width - pad.right}" y="20" text-anchor="end" fill="#6b7280" font-size="12" font-weight="750">Bars show net increase</text>
+      <line x1="${selectedX}" x2="${selectedX}" y1="${pad.top - 2}" y2="${netBaseY + 14}" stroke="#c76f2d" stroke-width="2" stroke-dasharray="5 5"></line>
+      <circle cx="${selectedX}" cy="${selectedY}" r="8" fill="#ffffff" stroke="#c76f2d" stroke-width="3"></circle>
+      <g class="teacher-callout">
+        <rect x="${Math.min(width - 300, Math.max(pad.left, selectedX - 132))}" y="14" width="264" height="58" rx="12"></rect>
+        <text x="${Math.min(width - 284, Math.max(pad.left + 16, selectedX - 116))}" y="38">${escapeHtml(selected.week)} / ${selected.employed} teachers</text>
+        <text x="${Math.min(width - 284, Math.max(pad.left + 16, selectedX - 116))}" y="58">Net ${selected.net > 0 ? "+" : ""}${selected.net}${Number.isFinite(selected.hired) && Number.isFinite(selected.exited) ? ` / ${selected.hired} hired, ${selected.exited} exited` : ""}</text>
+      </g>
+      <text x="${pad.left}" y="22" fill="#3b6ea8" font-size="13" font-weight="900">Teaching staff</text>
     </svg>
   `;
+  els.teacherGrowthChart.querySelectorAll("[data-staff-week]").forEach((item) => {
+    item.onclick = () => {
+      state.selectedTeacherWeek = item.dataset.staffWeek;
+      renderTeacherGrowthChart();
+    };
+    item.onkeydown = (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        state.selectedTeacherWeek = item.dataset.staffWeek;
+        renderTeacherGrowthChart();
+      }
+    };
+  });
+
 }
 
 function renderTables(areaManagers) {
-  const branchGrowthRows = (data.branchGrowth || [])
+  const liveBranchRows = Object.values(data.operations?.rmSummary || {}).map((record) => ({
+    rm: record.rm,
+    latest: { branches: record.branches },
+    fourWeekGrowth: 0,
+    fourWeekGrowthPct: null,
+    pipelineTeachers: null,
+  }));
+  const branchGrowthRows = (data.branchGrowth?.length ? data.branchGrowth : liveBranchRows)
     .filter((record) => state.rm === "All" || record.rm === state.rm)
     .sort((a, b) => b.fourWeekGrowth - a.fourWeekGrowth);
 
   if (els.branchGrowthTable) {
-    els.branchGrowthTable.innerHTML = branchGrowthRows.map((record) => `
-      <tr>
-        <td>${record.rm}</td>
-        <td class="metric">${record.latest.branches}</td>
-        <td class="${record.fourWeekGrowthPct >= 0 ? "positive" : "negative"}">${pct(record.fourWeekGrowthPct)}</td>
-        <td class="metric">${record.pipelineTeachers ?? "n/a"}</td>
-      </tr>
-    `).join("") || `<tr><td colspan="4" class="empty">Add a Branch Per RM tab to the Google Sheet to show branch expansion.</td></tr>`;
+    els.branchGrowthTable.innerHTML = branchGrowthRows.map((record) => {
+      const status = milestoneStatus(record);
+      return `
+        <tr>
+          <td><button class="text-link" type="button" data-branch-rm="${escapeAttr(record.rm)}">${escapeHtml(record.rm)}</button></td>
+          <td class="metric">${data.operations?.rmSummary?.[record.rm]?.branches ?? record.latest.branches}</td>
+          <td class="${record.fourWeekGrowthPct >= 0 ? "positive" : "negative"}">${pct(record.fourWeekGrowthPct)}</td>
+          <td class="metric">${record.pipelineTeachers ?? "n/a"}</td>
+          <td class="metric milestone-cell">
+            <strong>${status.value}</strong>
+            <span class="${status.className}">${status.note}</span>
+          </td>
+        </tr>
+      `;
+    }).join("") || `<tr><td colspan="5" class="empty">Add a Branch Per RM tab to the Google Sheet to show branch expansion.</td></tr>`;
+
+    els.branchGrowthTable.querySelectorAll("[data-branch-rm]").forEach((button) => {
+      button.onclick = () => {
+        state.selectedBranchRm = button.dataset.branchRm;
+        renderTables(filteredAreaManagers());
+      };
+    });
   }
 
-  els.rmTable.innerHTML = regionalSummary(areaManagers).map((record) => `
-    <tr>
-      <td>${record.rm}</td>
-      <td class="metric ${Number.isFinite(record.vacancyPct) && record.vacancyPct > 0 ? "negative" : "positive"}">${pct(record.vacancyPct)}</td>
-      <td class="metric">${record.sams}</td>
-      <td class="metric">${record.ams}</td>
-      <td class="metric">${record.tms ?? "n/a"}</td>
-      <td class="metric">${record.vacantTmCapacity ?? "n/a"}</td>
-    </tr>
-  `).join("") || `<tr><td colspan="6" class="empty">No regional manager data found.</td></tr>`;
+  if (els.branchAmGrowthTable) {
+    const selectedRm = state.selectedBranchRm;
+    const liveRows = (data.operations?.ams || [])
+      .filter((record) => record.rm === selectedRm)
+      .sort((a, b) => (b.branches || 0) - (a.branches || 0));
+    const fallbackRows = data.areaManagers
+      .filter((record) => record.rm === selectedRm)
+      .map((record) => ({ am: record.am, branches: null }));
+
+    const rows = liveRows.length ? liveRows : fallbackRows;
+    els.branchAmGrowthTable.innerHTML = selectedRm && rows.length
+      ? rows.map((record) => `
+        <tr>
+          <td>${record.am}</td>
+          <td class="metric">${Number.isFinite(record.branches) ? record.branches : "n/a"}</td>
+          <td class="muted-cell">Not available</td>
+        </tr>
+      `).join("")
+      : `<tr><td colspan="3" class="empty">Select an RM above to view Area Manager branch detail.</td></tr>`;
+  }
+
+  els.rmTable.innerHTML = regionalSummary(areaManagers).map((record) => {
+    const isSelected = record.rm === state.selectedCapacityRm;
+    const liveRows = (data.operations?.ams || [])
+      .filter((item) => item.rm === record.rm)
+      .map((item) => ({
+        am: item.am,
+        tms: item.tms,
+        vacancies: tmVacanciesForAreaManager(item.tms),
+      }))
+      .sort((a, b) => (b.vacancies || 0) - (a.vacancies || 0));
+    const fallbackRows = data.areaManagers
+      .filter((item) => item.rm === record.rm)
+      .map((item) => ({ am: item.am, tms: null, vacancies: null }));
+    const rows = liveRows.length ? liveRows : fallbackRows;
+    const detailRows = rows.map((item, index) => `
+      <div class="am-capacity-item">
+        <span>${index + 1}. ${escapeHtml(item.am)}</span>
+        <strong>${Number.isFinite(item.tms) ? item.tms : "n/a"} TMs</strong>
+        <em>${Number.isFinite(item.vacancies) ? item.vacancies : "n/a"} vacancies</em>
+      </div>
+    `).join("");
+    const expansion = isSelected
+      ? `<tr class="am-expansion-row">
+          <td colspan="5">
+            <div class="am-expansion">
+              ${detailRows || `<p class="empty">No Area Manager detail available for ${escapeHtml(record.rm)}.</p>`}
+            </div>
+          </td>
+        </tr>`
+      : "";
+    return `
+      <tr class="${isSelected ? "selected-row" : ""}">
+        <td><button class="text-link" type="button" data-capacity-rm="${escapeAttr(record.rm)}">${escapeHtml(record.rm)}</button></td>
+        <td class="metric ${Number.isFinite(record.vacancyPct) && record.vacancyPct > 0 ? "negative" : "positive"}">${pct(record.vacancyPct)}</td>
+        <td class="metric">${record.ams}</td>
+        <td class="metric">${record.tms ?? "n/a"}</td>
+        <td class="metric">${record.vacantTmCapacity ?? "n/a"}</td>
+      </tr>
+      ${expansion}
+    `;
+  }).join("") || `<tr><td colspan="5" class="empty">No regional manager data found.</td></tr>`;
+
+  els.rmTable.querySelectorAll("[data-capacity-rm]").forEach((button) => {
+    button.onclick = () => {
+      state.selectedCapacityRm = state.selectedCapacityRm === button.dataset.capacityRm ? null : button.dataset.capacityRm;
+      renderTables(filteredAreaManagers());
+    };
+  });
 
   els.amTable.innerHTML = areaManagers
     .slice()
@@ -672,6 +1305,16 @@ function renderTables(areaManagers) {
 
 function render() {
   const areaManagers = filteredAreaManagers();
+  document.querySelectorAll("[data-view-tab]").forEach((button) => {
+    button.classList.toggle("selected", button.dataset.viewTab === state.activeTab);
+    button.onclick = () => {
+      state.activeTab = button.dataset.viewTab;
+      render();
+    };
+  });
+  document.querySelectorAll("[data-tab-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.tabPanel !== state.activeTab;
+  });
   renderKpis(data.areaManagers);
   renderRmMatrix(data.areaManagers);
   renderChart(areaManagers);
@@ -689,6 +1332,13 @@ async function initializeDashboard() {
   } catch (error) {
     console.warn("Using dashboard snapshot because live Google Sheet loading failed.", error);
     render();
+  }
+
+  try {
+    data = { ...data, operations: await loadOperationsData() };
+    render();
+  } catch (error) {
+    console.warn("Using dashboard without live operations page data.", error);
   }
 }
 
