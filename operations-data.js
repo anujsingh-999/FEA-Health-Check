@@ -1,0 +1,31 @@
+window.OPERATIONS_DATA = {
+  sourceUrl: "http://103.27.234.18:8080/rmwisebranch.aspx",
+  generatedFrom: "snapshot fallback for GitHub Pages",
+  summary: {
+    ams: 43,
+    tms: 219,
+    branches: 1704,
+    students: 82637,
+    teachers: 1652,
+    branchesWithLaptop: 1571,
+    laptops: 15243,
+    tablets: 17007,
+    datacards: 1004,
+    trolleys: 167,
+    cameras: 1446,
+    airfiber: 671,
+  },
+  enrollment: {
+    enrolled: 82637,
+    capacity: 102240,
+    pct: 80.82453051643192,
+  },
+  rmSummary: {
+    "Ankita Srivastava": { rm: "Ankita Srivastava", ams: 4, tms: 21, branches: 149, students: 6392, teachers: 140, branchesWithLaptop: 128, laptops: 1255, tablets: 1460, devices: 2715, datacards: 46, trolleys: 14, cameras: 158, airfiber: 92 },
+    "Deepak Verma": { rm: "Deepak Verma", ams: 12, tms: 64, branches: 508, students: 25212, teachers: 494, branchesWithLaptop: 471, laptops: 4869, tablets: 4666, devices: 9535, datacards: 373, trolleys: 55, cameras: 519, airfiber: 70 },
+    "Manikant Mishra": { rm: "Manikant Mishra", ams: 6, tms: 34, branches: 259, students: 12981, teachers: 253, branchesWithLaptop: 239, laptops: 2169, tablets: 2371, devices: 4540, datacards: 182, trolleys: 27, cameras: 256, airfiber: 56 },
+    "Mukesh Upadhyay": { rm: "Mukesh Upadhyay", ams: 17, tms: 78, branches: 620, students: 30663, teachers: 607, branchesWithLaptop: 589, laptops: 5630, tablets: 6211, devices: 11841, datacards: 334, trolleys: 64, cameras: 416, airfiber: 346 },
+    "Surbhi Chaudhary": { rm: "Surbhi Chaudhary", ams: 4, tms: 22, branches: 168, students: 7389, teachers: 158, branchesWithLaptop: 144, laptops: 1320, tablets: 2299, devices: 3619, datacards: 69, trolleys: 7, cameras: 97, airfiber: 107 },
+  },
+  ams: [],
+};

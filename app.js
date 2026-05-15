@@ -190,6 +190,11 @@ function readEnrollmentFromOperationsTables(tables) {
 }
 
 async function loadOperationsData() {
+  if (location.protocol === "https:" && OPERATIONS_URL.startsWith("http://")) {
+    if (window.OPERATIONS_DATA) return window.OPERATIONS_DATA;
+    throw new Error("Live operations page is HTTP-only and is blocked on HTTPS pages.");
+  }
+
   const response = await fetch(OPERATIONS_URL, { cache: "no-store" });
   if (!response.ok) throw new Error(`Could not load operations page: ${response.status}`);
   return readOperationsPage(await response.text());
