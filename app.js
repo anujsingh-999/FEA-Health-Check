@@ -109,6 +109,8 @@ function readOperationsPage(html) {
     ams: fieldNumber(totalRow, "AMs"),
     tms: fieldNumber(totalRow, "TMs"),
     branches: fieldNumber(totalRow, "Branches"),
+    students: fieldNumber(totalRow, "students"),
+    teachers: fieldNumber(totalRow, "teachers"),
     branchesWithLaptop: fieldNumber(totalRow, "Branchwithlaptop"),
     laptops: fieldNumber(totalRow, "Laptops"),
     tablets: fieldNumber(totalRow, "Tablets and Jio Book"),
@@ -128,6 +130,8 @@ function readOperationsPage(html) {
       sam: record.SAM,
       tms: fieldNumber(record, "TMs"),
       branches,
+      students: fieldNumber(record, "students"),
+      teachers: fieldNumber(record, "teachers"),
       branchesWithLaptop: fieldNumber(record, "Branchwithlaptop"),
       laptops,
       tablets,
@@ -145,6 +149,8 @@ function readOperationsPage(html) {
     ams: fieldNumber(record, "AMs"),
     tms: fieldNumber(record, "TMs"),
     branches: fieldNumber(record, "Branches"),
+    students: fieldNumber(record, "students"),
+    teachers: fieldNumber(record, "teachers"),
     branchesWithLaptop: fieldNumber(record, "Branchwithlaptop"),
     laptops: fieldNumber(record, "Laptops"),
     tablets: fieldNumber(record, "Tablets and Jio Book"),
@@ -169,9 +175,10 @@ function readEnrollmentFromOperationsTables(tables) {
     const total = records.find((record) => /total|overall/i.test(Object.values(record).join(" "))) || records.at(-1);
     const enrolledKey = headers.find((header) => /enrol|student/i.test(header) && !/%|percent|capacity/i.test(header));
     const capacityKey = headers.find((header) => /capacity/i.test(header));
+    const branchesKey = headers.find((header) => /^branches$/i.test(header));
     const pctKey = headers.find((header) => /%|percent/i.test(header));
     const enrolled = fieldNumber(total, enrolledKey);
-    const capacity = fieldNumber(total, capacityKey);
+    const capacity = fieldNumber(total, capacityKey) ?? (fieldNumber(total, branchesKey) ? fieldNumber(total, branchesKey) * 60 : null);
     const pctValue = fieldNumber(total, pctKey);
     return {
       enrolled,
@@ -554,6 +561,12 @@ function latestPeopleMovement() {
     .at(-1) || {};
 }
 
+function currentTeachingStaff() {
+  return Number.isFinite(data.operations?.summary?.teachers)
+    ? data.operations.summary.teachers
+    : latestPeopleMovement().employed;
+}
+
 function totalTmCapacityGap() {
   const activeBranches = totalActiveBranches();
   const hiredTms = totalHiredTms();
@@ -658,6 +671,7 @@ function renderKpis(areaManagers) {
   const totalStudentCapacity = data.operations?.enrollment?.capacity ?? activeBranches * 60;
   const currentStudents = data.operations?.enrollment?.enrolled ?? (Number.isFinite(studentCapacityPct) ? Math.round((studentCapacityPct / 100) * totalStudentCapacity) : null);
   const people = latestPeopleMovement();
+  const currentTeachers = currentTeachingStaff();
   const studentCards = [
     [`${latestWeekLabel(areaManagers).replace("Week ", "W ")} Attendance`, pctRound(latest), "Latest available weekly attendance"],
     ["4-Week Average", pctRound(fourWeekAvg), fourWeeks.map((point) => `${point.week.replace("Week ", "W ")} ${pctRound(point.value)}`).join(" / ")],
@@ -666,7 +680,7 @@ function renderKpis(areaManagers) {
     ["Active Branches", activeBranches.toString(), data.operations ? "Live branch count from operations page" : "Branches with attendance records across FEA"],
   ];
   const staffCards = [
-    ["Teaching Staff", Number.isFinite(people.employed) ? people.employed.toString() : "n/a", people.week ? `${people.week} employed teaching staff` : "Waiting for staff movement data"],
+    ["Teaching Staff", Number.isFinite(currentTeachers) ? currentTeachers.toString() : "n/a", Number.isFinite(data.operations?.summary?.teachers) ? "Live teacher count from operations page" : (people.week ? `${people.week} employed teaching staff` : "Waiting for staff movement data")],
     ["Net Increase", Number.isFinite(people.net) ? `${people.net > 0 ? "+" : ""}${people.net}` : "n/a", people.week ? `${people.week}: ${Number.isFinite(people.hired) ? `${people.hired} hired` : "hiring n/a"} / ${Number.isFinite(people.exited) ? `${people.exited} exited` : "exits n/a"}` : "Latest hired minus exited"],
     ["Branches / TM", Number.isFinite(branchesPerTm) ? branchesPerTm.toFixed(1) : "n/a", `${activeBranches} branches / ${hiredTms || "n/a"} TMs; 10 expected per TM`],
     ["Total branches with less than 15 devices", "n/a", "Waiting for branch-level device data"],
