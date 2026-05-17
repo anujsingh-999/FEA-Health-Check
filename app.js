@@ -4,6 +4,7 @@ const indiaStates = window.INDIA_STATES_GEOJSON || { features: [] };
 const SPREADSHEET_ID = "11kof2bCLpS-q7WFQdFM0_jkxp0mB3_vUA0bo_hM8wgQ";
 const OPERATIONS_URL = "http://103.27.234.18:8080/rmwisebranch.aspx";
 const SHEET_NAMES = ["Overall", "AM wise", "SAM wise", "RM wise", "Low Attednance", "Targets", "Branch Per RM", "Emp Attrition"];
+const INDUCTION_GID = "713483319";
 const DECEMBER_2026_MILESTONES = {
   "Ankita Srivastava": 290,
   "Darshana Vishwakarma": 500,
@@ -17,39 +18,51 @@ const DECEMBER_2026_MILESTONES = {
 const state = {
   rm: "All",
   activeTab: "student",
+  attendanceView: "4w",
+  branchRmFilter: null,
   selectedBranchRm: null,
   selectedCapacityRm: null,
   selectedTeacherWeek: null,
+  staffFocus: "induction",
 };
 
 const els = {
   kpis: document.querySelector("#kpis"),
+  studentOrgKpis: document.querySelector("#studentOrgKpis"),
   trendTitle: document.querySelector("#trendTitle"),
   trendChart: document.querySelector("#trendChart"),
   trendLegend: document.querySelector("#trendLegend"),
   heatmapTitle: document.querySelector("#heatmapTitle"),
   attendanceHeatmap: document.querySelector("#attendanceHeatmap"),
+  healthBand: document.querySelector("#healthBand"),
+  focusTitle: document.querySelector("#focusTitle"),
+  focusCount: document.querySelector("#focusCount"),
+  focusList: document.querySelector("#focusList"),
   rmMatrix: document.querySelector("#rmMatrix"),
   rmTable: document.querySelector("#rmTable"),
   amTable: document.querySelector("#amTable"),
   branchGrowthTable: document.querySelector("#branchGrowthTable"),
   branchAmGrowthTable: document.querySelector("#branchAmGrowthTable"),
+  branchRmSelect: document.querySelector("#branchRmSelect"),
+  attendanceViewSelect: document.querySelector("#attendanceViewSelect"),
+  inductionChart: document.querySelector("#inductionChart"),
   teacherGrowthChart: document.querySelector("#teacherGrowthChart"),
+  staffTrendTitle: document.querySelector("#staffTrendTitle"),
 };
 
-function gvizSheet(sheetName) {
+function gvizTable(params) {
   const callbackName = `googleSheet_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  const params = new URLSearchParams({
-    sheet: sheetName,
+  const searchParams = new URLSearchParams({
+    ...params,
     tqx: `out:json;responseHandler:${callbackName}`,
   });
-  const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?${params.toString()}`;
+  const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?${searchParams.toString()}`;
 
   return new Promise((resolve, reject) => {
     const script = document.createElement("script");
     const timeout = window.setTimeout(() => {
       cleanup();
-      reject(new Error(`Timed out loading ${sheetName}`));
+      reject(new Error(`Timed out loading Google Sheet data`));
     }, 15000);
 
     function cleanup() {
@@ -61,7 +74,7 @@ function gvizSheet(sheetName) {
     window[callbackName] = (response) => {
       cleanup();
       if (response?.status === "error") {
-        reject(new Error(response.errors?.[0]?.detailed_message || `Could not load ${sheetName}`));
+        reject(new Error(response.errors?.[0]?.detailed_message || `Could not load Google Sheet data`));
         return;
       }
       resolve(response.table);
@@ -69,11 +82,19 @@ function gvizSheet(sheetName) {
 
     script.onerror = () => {
       cleanup();
-      reject(new Error(`Could not load ${sheetName}`));
+      reject(new Error(`Could not load Google Sheet data`));
     };
     script.src = url;
     document.head.appendChild(script);
   });
+}
+
+function gvizSheet(sheetName) {
+  return gvizTable({ sheet: sheetName });
+}
+
+function gvizSheetByGid(gid) {
+  return gvizTable({ gid });
 }
 
 function tableToRows(table) {
@@ -346,6 +367,14 @@ function parsePipeline(value) {
   return { teachers, tms: null };
 }
 
+function parseTeacherAttrition(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const direct = numericValue(value);
+  if (Number.isFinite(direct)) return direct;
+  const match = String(value).trim().match(/^([0-9.]+)/);
+  return match ? Number(match[1]) : null;
+}
+
 function readBranchGrowth(rows) {
   const headerIndex = rows.findIndex((row) => /week/i.test(String(row[0] || "")));
   if (headerIndex < 0) return [];
@@ -401,11 +430,12 @@ function readPeopleMovement(rows) {
     const employedRow = metricRows.get("employed") || [];
     const retentionRow = [...metricRows.entries()].find(([label]) => /retention/i.test(label))?.[1] || [];
     const hiredRow = metricRows.get("hired") || [];
+    const attritionTotalRow = [...metricRows.entries()].find(([label]) => /^attrition\b/i.test(label))?.[1] || [];
     const attritionStart = rows.findIndex((row) => /attrition/i.test(String(row[0] || "")));
     const exitRows = attritionStart >= 0
       ? rows.slice(attritionStart + 1).filter((row) => {
         const label = String(row[0] || "").trim();
-        return label && !/bonus/i.test(label);
+        return label && !/^attrition\b/i.test(label) && !/bonus/i.test(label);
       })
       : [];
 
@@ -415,10 +445,12 @@ function readPeopleMovement(rows) {
       const hired = numericValue(hiredRow[col]);
       const employed = numericValue(employedRow[col]);
       const retention = numericValue(retentionRow[col]);
-      const exited = exitRows.reduce((sum, row) => {
+      const attritionTotal = parseTeacherAttrition(attritionTotalRow[col]);
+      const reasonTotal = exitRows.reduce((sum, row) => {
         const value = numericValue(row[col]);
         return Number.isFinite(value) ? sum + value : sum;
       }, 0);
+      const exited = Number.isFinite(attritionTotal) ? attritionTotal : reasonTotal;
       if (week && (Number.isFinite(hired) || Number.isFinite(employed) || exited > 0)) {
         output.push({
           week: `Week ${week}`,
@@ -426,7 +458,7 @@ function readPeopleMovement(rows) {
           hired,
           exited,
           net: (Number.isFinite(hired) ? hired : 0) - exited,
-          retention: Number.isFinite(retention) ? retention * 100 : null,
+          retention: Number.isFinite(retention) ? (retention <= 1 ? retention * 100 : retention) : null,
         });
       }
     }
@@ -451,9 +483,53 @@ function readPeopleMovement(rows) {
   }).filter((record) => record.week && Number.isFinite(record.net));
 }
 
+function readInduction(rows) {
+  const headers = rows[0] || [];
+  const weekIndex = headers.findIndex((label) => /^wk$|week/i.test(String(label)));
+  const targetIndex = headers.findIndex((label) => /target/i.test(String(label)));
+  const actualIndex = headers.findIndex((label) => /actual/i.test(String(label)));
+  if (weekIndex < 0 || targetIndex < 0 || actualIndex < 0) return [];
+
+  return rows.slice(1).map((row) => {
+    const weekNumber = numericValue(row[weekIndex]);
+    const target = numericValue(row[targetIndex]);
+    const actual = numericValue(row[actualIndex]);
+    return {
+      week: Number.isFinite(weekNumber) ? `Week ${weekNumber}` : "",
+      target,
+      actual,
+      arrivalPct: Number.isFinite(target) && target > 0 && Number.isFinite(actual) ? (actual / target) * 100 : null,
+    };
+  }).filter((record) => record.week && (Number.isFinite(record.target) || Number.isFinite(record.actual)));
+}
+
 async function loadLiveDashboardData() {
   const tables = await Promise.all(SHEET_NAMES.map(async (sheet) => [sheet, tableToRows(await gvizSheet(sheet))]));
   const workbook = Object.fromEntries(tables);
+  let inductionRows = [];
+  let employeeAttritionRows = workbook["Emp Attrition"] || [];
+  try {
+    inductionRows = tableToRows(await gvizSheetByGid(INDUCTION_GID));
+  } catch (error) {
+    console.warn("Induction sheet could not be loaded.", error);
+  }
+  try {
+    const attritionTotalRows = tableToRows(await gvizTable({ sheet: "Emp Attrition", range: "A5:AW5" }));
+    const attritionTotalRow = attritionTotalRows.find((row) => /^attrition\b/i.test(String(row[0] || "")));
+    if (attritionTotalRow) {
+      let replaced = false;
+      employeeAttritionRows = employeeAttritionRows.map((row) => {
+        if (/^attrition\b/i.test(String(row[0] || ""))) {
+          replaced = true;
+          return attritionTotalRow;
+        }
+        return row;
+      });
+      if (!replaced) employeeAttritionRows.push(attritionTotalRow);
+    }
+  } catch (error) {
+    console.warn("Teacher attrition total row could not be loaded.", error);
+  }
   return {
     source: {
       sheetUrl: `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit?usp=sharing`,
@@ -467,7 +543,8 @@ async function loadLiveDashboardData() {
     lowAttendance: readLowAttendance(workbook["Low Attednance"]),
     targets: readTargets(workbook.Targets),
     branchGrowth: readBranchGrowth(workbook["Branch Per RM"] || []),
-    peopleMovement: readPeopleMovement(workbook["Emp Attrition"] || []),
+    peopleMovement: readPeopleMovement(employeeAttritionRows),
+    induction: readInduction(inductionRows),
   };
 }
 
@@ -566,6 +643,18 @@ function latestPeopleMovement() {
     .at(-1) || {};
 }
 
+function latestRetention() {
+  return (data.peopleMovement || [])
+    .filter((record) => Number.isFinite(record.retention))
+    .at(-1) || {};
+}
+
+function latestInduction() {
+  return (data.induction || [])
+    .filter((record) => Number.isFinite(record.target) || Number.isFinite(record.actual))
+    .at(-1) || {};
+}
+
 function currentTeachingStaff() {
   return Number.isFinite(data.operations?.summary?.teachers)
     ? data.operations.summary.teachers
@@ -582,6 +671,30 @@ function totalTmCapacityGap() {
 
 function latestWeekLabel(areaManagers) {
   return areaManagers.find((record) => record.latest?.week)?.latest.week ?? "Latest week";
+}
+
+function attendanceViewLabel() {
+  if (state.attendanceView === "latest") return "Latest Week";
+  if (state.attendanceView === "3m") return "3-Month Average";
+  return "4-Week Average";
+}
+
+function attendanceMetricForRecord(record) {
+  if (state.attendanceView === "latest") return latestValue(record);
+  if (state.attendanceView === "3m") return lastNAvg(record, 12);
+  return lastNAvg(record, 4);
+}
+
+function attendanceMetricForRegional(record) {
+  if (state.attendanceView === "latest") return record.latest;
+  if (state.attendanceView === "3m") return record.threeMonthAvg;
+  return record.fourWeekAvg;
+}
+
+function attendanceMetaForRegional(record) {
+  if (state.attendanceView === "latest") return `4W ${pctRound(record.fourWeekAvg)} / ${record.ams} AMs`;
+  if (state.attendanceView === "3m") return `Latest ${pctRound(record.latest)} / ${record.ams} AMs`;
+  return `3M ${pctRound(record.threeMonthAvg)} / ${record.ams} AMs`;
 }
 
 function areaManagerDetails(am) {
@@ -665,42 +778,216 @@ function averageLastFour(records) {
 }
 
 function renderKpis(areaManagers) {
-  const latest = avg(areaManagers.map(latestValue));
-  const fourWeeks = averageLastFour(areaManagers);
-  const fourWeekAvg = avg(fourWeeks.map((point) => point.value));
-  const threeMonthAvg = avg(areaManagers.map((record) => lastNAvg(record, 12)));
   const activeBranches = totalActiveBranches();
   const hiredTms = totalHiredTms();
   const branchesPerTm = hiredTms ? activeBranches / hiredTms : null;
-  const studentCapacityPct = latestStudentCapacityPct();
-  const totalStudentCapacity = data.operations?.enrollment?.capacity ?? activeBranches * 60;
-  const currentStudents = data.operations?.enrollment?.enrolled ?? (Number.isFinite(studentCapacityPct) ? Math.round((studentCapacityPct / 100) * totalStudentCapacity) : null);
   const people = latestPeopleMovement();
+  const retention = latestRetention();
+  const induction = latestInduction();
   const currentTeachers = currentTeachingStaff();
-  const studentCards = [
-    [`${latestWeekLabel(areaManagers).replace("Week ", "W ")} Attendance`, pctRound(latest), "Latest available weekly attendance"],
-    ["4-Week Average", pctRound(fourWeekAvg), fourWeeks.map((point) => `${point.week.replace("Week ", "W ")} ${pctRound(point.value)}`).join(" / ")],
-    ["3-Month Average", pctRound(threeMonthAvg), "Rolling 12-week attendance average"],
-    ["Enrolment %", pctRound(studentCapacityPct), Number.isFinite(currentStudents) ? `${currentStudents} students / ${totalStudentCapacity} capacity` : `${totalStudentCapacity} capacity from ${activeBranches} branches; waiting for enrolment table`],
-    ["Active Branches", activeBranches.toString(), data.operations ? "Live branch count from operations page" : "Branches with attendance records across FEA"],
-  ];
+  const noShowPct = Number.isFinite(induction.arrivalPct) ? 100 - induction.arrivalPct : null;
+  const studentCards = regionalSummary(areaManagers).map((record) => [
+    record.rm,
+    pctRound(attendanceMetricForRegional(record)),
+    attendanceMetaForRegional(record),
+    record.rm,
+  ]);
   const staffCards = [
-    ["Teaching Staff", Number.isFinite(currentTeachers) ? currentTeachers.toString() : "n/a", Number.isFinite(data.operations?.summary?.teachers) ? "Live teacher count from operations page" : (people.week ? `${people.week} employed teaching staff` : "Waiting for staff movement data")],
-    ["Net Increase", Number.isFinite(people.net) ? `${people.net > 0 ? "+" : ""}${people.net}` : "n/a", people.week ? `${people.week}: ${Number.isFinite(people.hired) ? `${people.hired} hired` : "hiring n/a"} / ${Number.isFinite(people.exited) ? `${people.exited} exited` : "exits n/a"}` : "Latest hired minus exited"],
-    ["Branches / TM", Number.isFinite(branchesPerTm) ? branchesPerTm.toFixed(1) : "n/a", `${activeBranches} branches / ${hiredTms || "n/a"} TMs; 10 expected per TM`],
-    ["Total branches with less than 15 devices", "n/a", "Waiting for branch-level device data"],
+    ["Teaching Staff", Number.isFinite(currentTeachers) ? currentTeachers.toString() : "n/a", "Live count", "teacher"],
+    ["Employee Retention", pctRound(retention.retention), retention.week ? `${retention.week} / click for more` : "Click for more", "retention"],
+    ["Induction No-Show", pctRound(noShowPct), induction.week ? `${induction.week}: ${Math.max(0, (induction.target || 0) - (induction.actual || 0))} did not arrive / click for more` : "Click for more", "induction"],
+    ["Teacher Net Increase", Number.isFinite(people.net) ? `${people.net > 0 ? "+" : ""}${people.net}` : "n/a", people.week ? `${people.week} / click for more` : "Click for more", "teacher"],
+    ["Branches / TM", Number.isFinite(branchesPerTm) ? branchesPerTm.toFixed(1) : "n/a", `${activeBranches} branches / ${hiredTms || "n/a"} TMs`, "capacity"],
   ];
   const cards = state.activeTab === "staff" ? staffCards : studentCards;
 
   els.kpis.innerHTML = cards
-    .map(([label, value, note]) => `
-      <article class="kpi-card">
+    .map(([label, value, note, action]) => `
+      <article class="kpi-card ${state.activeTab === "student" ? "student-rm-card" : ""} ${state.rm === action || state.staffFocus === action ? "selected" : ""}" ${state.activeTab === "staff" ? `data-staff-focus="${escapeAttr(action)}"` : `data-rm-focus="${escapeAttr(action)}"`}>
         <div class="kpi-label">${label}</div>
         <div class="kpi-value">${value}</div>
         <p class="kpi-note">${note}</p>
       </article>
     `)
     .join("");
+
+  els.kpis.querySelectorAll("[data-rm-focus]").forEach((card) => {
+    card.onclick = () => {
+      state.rm = state.rm === card.dataset.rmFocus ? "All" : card.dataset.rmFocus;
+      render();
+    };
+  });
+  els.kpis.querySelectorAll("[data-staff-focus]").forEach((card) => {
+    card.onclick = () => {
+      state.staffFocus = card.dataset.staffFocus;
+      render();
+    };
+  });
+}
+
+function renderStudentOrgKpis(areaManagers) {
+  if (!els.studentOrgKpis) return;
+  const latest = avg(areaManagers.map(latestValue));
+  const fourWeeks = averageLastFour(areaManagers);
+  const fourWeekAvg = avg(fourWeeks.map((point) => point.value));
+  const threeMonthAvg = avg(areaManagers.map((record) => lastNAvg(record, 12)));
+  const activeBranches = totalActiveBranches();
+  const studentCapacityPct = latestStudentCapacityPct();
+  const totalStudentCapacity = data.operations?.enrollment?.capacity ?? activeBranches * 60;
+  const currentStudents = data.operations?.enrollment?.enrolled ?? (Number.isFinite(studentCapacityPct) ? Math.round((studentCapacityPct / 100) * totalStudentCapacity) : null);
+  const cards = [
+    [`${latestWeekLabel(areaManagers).replace("Week ", "W ")} Attendance`, pctRound(latest), "Latest weekly attendance"],
+    ["4-Week Average", pctRound(fourWeekAvg), fourWeeks.map((point) => `${point.week.replace("Week ", "W ")} ${pctRound(point.value)}`).join(" / ")],
+    ["3-Month Average", pctRound(threeMonthAvg), "Rolling 12-week attendance"],
+    ["Enrolment %", pctRound(studentCapacityPct), Number.isFinite(currentStudents) ? `${currentStudents} students / ${totalStudentCapacity} capacity` : `${totalStudentCapacity} capacity; waiting for enrolment`],
+    ["Active Branches", activeBranches.toString(), data.operations ? "Live branch count" : "Branches with attendance records"],
+  ];
+
+  els.studentOrgKpis.innerHTML = cards.map(([label, value, note]) => `
+    <article class="org-kpi-card">
+      <span>${label}</span>
+      <strong>${value}</strong>
+      <small>${note}</small>
+    </article>
+  `).join("");
+}
+
+function healthBandItems(areaManagers) {
+  const latest = avg(areaManagers.map(latestValue));
+  const fourWeekAvg = avg(averageLastFour(areaManagers).map((point) => point.value));
+  const enrolment = latestStudentCapacityPct();
+  const retention = latestRetention().retention;
+  const induction = latestInduction().arrivalPct;
+
+  if (state.activeTab === "staff") {
+    return [
+      ["Induction arrival", induction, [[60, "Critical"], [75, "Watch"], [90, "Stable"], [101, "Strong"]]],
+      ["Employee retention", retention, [[75, "Critical"], [82, "Watch"], [88, "Stable"], [101, "Strong"]]],
+      ["Teaching net", latestPeopleMovement().net, [[-1, "Negative"], [5, "Flat"], [20, "Building"], [Infinity, "Strong"]], true],
+      ["TM coverage", totalHiredTms() ? (totalHiredTms() / Math.max(1, totalActiveBranches() / 10)) * 100 : null, [[75, "Critical"], [90, "Watch"], [100, "Near full"], [Infinity, "Full"]]],
+    ];
+  }
+
+  return [
+    ["Latest attendance", latest, [[50, "Critical"], [60, "Watch"], [70, "Stable"], [101, "Strong"]]],
+    ["4-week average", fourWeekAvg, [[50, "Critical"], [60, "Watch"], [70, "Stable"], [101, "Strong"]]],
+    ["Enrolment capacity", enrolment, [[60, "Low"], [75, "Moderate"], [90, "Healthy"], [101, "Full"]]],
+    ["3-month attendance", avg(areaManagers.map((record) => lastNAvg(record, 12))), [[50, "Critical"], [60, "Watch"], [70, "Stable"], [101, "Strong"]]],
+  ];
+}
+
+function bandTone(index) {
+  return ["band-critical", "band-watch", "band-stable", "band-strong"][Math.max(0, Math.min(3, index))];
+}
+
+function renderHealthBand(areaManagers) {
+  if (!els.healthBand) return;
+  els.healthBand.innerHTML = healthBandItems(areaManagers).map(([label, value, bands, signedMetric]) => {
+    const bandIndex = Number.isFinite(value) ? bands.findIndex(([max]) => value < max) : 0;
+    const safeIndex = bandIndex < 0 ? bands.length - 1 : bandIndex;
+    const display = signedMetric
+      ? (Number.isFinite(value) ? `${value > 0 ? "+" : ""}${value}` : "n/a")
+      : pctRound(value);
+    return `
+      <article class="health-segment ${bandTone(safeIndex)}">
+        <strong>${display}</strong>
+        <span>${label}</span>
+        <small>${bands[safeIndex]?.[1] || "n/a"}</small>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderFocusPanel(areaManagers) {
+  if (!els.focusList || !els.focusCount) return;
+  if (els.focusTitle) {
+    els.focusTitle.textContent = state.activeTab === "staff" ? "TM Capacity Building" : "10 Areas To Focus";
+  }
+
+  if (state.activeTab === "staff") {
+    const items = regionalSummary(data.areaManagers)
+      .filter((record) => Number.isFinite(record.vacancyPct) && record.vacancyPct > 0)
+      .sort((a, b) => b.vacancyPct - a.vacancyPct)
+      .slice(0, 10)
+      .map((record) => ({
+        rm: record.rm,
+        title: record.rm,
+        value: pctRound(record.vacancyPct),
+        note: `${record.vacantTmCapacity ?? "n/a"} TM vacancies`,
+      }));
+
+    els.focusCount.textContent = items.length.toString();
+    els.focusList.innerHTML = items.map((item, index) => {
+      const isSelected = item.rm === state.selectedCapacityRm;
+      const liveRows = (data.operations?.ams || [])
+        .filter((record) => record.rm === item.rm)
+        .map((record) => ({
+          am: record.am,
+          tms: record.tms,
+          vacancies: tmVacanciesForAreaManager(record.tms),
+        }))
+        .sort((a, b) => (b.vacancies || 0) - (a.vacancies || 0));
+      const fallbackRows = data.areaManagers
+        .filter((record) => record.rm === item.rm)
+        .map((record) => ({ am: record.am, tms: null, vacancies: null }));
+      const detailRows = liveRows.length ? liveRows : fallbackRows;
+      return `
+        <div class="focus-capacity-group ${isSelected ? "selected" : ""}">
+          <button class="focus-item focus-button" type="button" data-capacity-rm="${escapeAttr(item.rm)}">
+            <span>${index + 1}</span>
+            <div>
+              <strong>${escapeHtml(item.title)}</strong>
+              <small>${escapeHtml(item.note)}</small>
+            </div>
+            <em>${item.value}</em>
+          </button>
+          ${isSelected ? `
+            <div class="focus-detail">
+              ${detailRows.map((record, detailIndex) => `
+                <div class="focus-detail-row">
+                  <strong>${detailIndex + 1}. ${escapeHtml(record.am)}</strong>
+                  <span>${Number.isFinite(record.tms) ? record.tms : "n/a"} TMs</span>
+                  <em>${Number.isFinite(record.vacancies) ? record.vacancies : "n/a"} vacant</em>
+                </div>
+              `).join("") || `<p class="empty">No Area Manager detail available.</p>`}
+            </div>
+          ` : ""}
+        </div>
+      `;
+    }).join("") || `<p class="empty">No TM capacity items for this view.</p>`;
+
+    els.focusList.querySelectorAll("[data-capacity-rm]").forEach((button) => {
+      button.onclick = () => {
+        state.selectedCapacityRm = state.selectedCapacityRm === button.dataset.capacityRm ? null : button.dataset.capacityRm;
+        renderFocusPanel(filteredAreaManagers());
+      };
+    });
+    return;
+  }
+
+  const items = areaManagers
+    .map((record) => ({ record, value: attendanceMetricForRecord(record) }))
+    .filter((item) => Number.isFinite(item.value))
+    .sort((a, b) => a.value - b.value)
+    .slice(0, 10)
+    .map(({ record, value }) => ({
+      title: record.am,
+      value: pctRound(value),
+      tone: performanceTone(value),
+      note: `${record.rm} / ${attendanceViewLabel()}`,
+    }));
+
+  els.focusCount.textContent = items.length.toString();
+  els.focusList.innerHTML = items.map((item, index) => `
+    <div class="focus-item">
+      <span>${index + 1}</span>
+      <div>
+        <strong>${escapeHtml(item.title)}</strong>
+        <small>${escapeHtml(item.note)}</small>
+      </div>
+      <em class="${item.tone}">${item.value}</em>
+    </div>
+  `).join("") || `<p class="empty">No attention items for this view.</p>`;
 }
 
 function chartRows(areaManagers) {
@@ -708,7 +995,7 @@ function chartRows(areaManagers) {
     return areaManagers
       .map((record) => ({
         label: record.am,
-        value: lastNAvg(record, 4),
+        value: attendanceMetricForRecord(record),
         meta: `${record.rm} / ${record.sam}`,
       }))
       .filter((row) => Number.isFinite(row.value))
@@ -719,8 +1006,8 @@ function chartRows(areaManagers) {
   return regionalSummary(areaManagers)
     .map((record) => ({
       label: record.rm,
-      value: record.fourWeekAvg,
-      meta: `3M ${pct(record.threeMonthAvg)} / ${record.ams} AMs`,
+      value: attendanceMetricForRegional(record),
+      meta: attendanceMetaForRegional(record),
     }))
     .filter((row) => Number.isFinite(row.value))
     .sort((a, b) => a.value - b.value);
@@ -729,12 +1016,13 @@ function chartRows(areaManagers) {
 function renderChart(areaManagers) {
   const rows = chartRows(areaManagers);
   els.trendLegend.innerHTML = `
-    <span><i style="background:#146eb4"></i>4-week average</span>
-    <span><i style="background:#ff9900"></i>Below 60%</span>
+    <span><i style="background:#d14343"></i>Below 50%</span>
+    <span><i style="background:#f59e0b"></i>50-59%</span>
+    <span><i style="background:#0f8f7a"></i>60%+</span>
   `;
   els.trendTitle.textContent = state.rm !== "All"
-    ? `${state.rm} - area manager ranking`
-    : "Regional Four-Week Attendance Ranking";
+    ? `${state.rm} - ${attendanceViewLabel()} AM Ranking`
+    : `Regional ${attendanceViewLabel()} Attendance Ranking`;
 
   if (!rows.length) {
     els.trendChart.innerHTML = `<p class="empty">No trend data available for the current filter.</p>`;
@@ -753,7 +1041,7 @@ function renderChart(areaManagers) {
   const grid = [40, 60, 80, 100];
   const bars = rows.map((row, index) => {
     const y = pad.top + index * rowHeight + (rowHeight - 16) / 2;
-    const fill = row.value < 60 ? "#ff9900" : "#146eb4";
+    const fill = performanceColor(row.value);
     const label = row.label.length > 28 ? `${row.label.slice(0, 27)}...` : row.label;
     return `
       <text x="${pad.left - 14}" y="${y + 12}" text-anchor="end" fill="#374151" font-size="12" font-weight="700">${label}</text>
@@ -781,6 +1069,20 @@ function toneClass(value) {
   if (value > 0.5) return "positive";
   if (value < -0.5) return "negative";
   return "neutral";
+}
+
+function performanceTone(value, goodThreshold = 60, warningThreshold = 50) {
+  if (!Number.isFinite(value)) return "muted-cell";
+  if (value < warningThreshold) return "negative";
+  if (value < goodThreshold) return "neutral";
+  return "positive";
+}
+
+function performanceColor(value, goodThreshold = 60, warningThreshold = 50) {
+  if (!Number.isFinite(value)) return "#7aa6c7";
+  if (value < warningThreshold) return "#d14343";
+  if (value < goodThreshold) return "#f59e0b";
+  return "#0f8f7a";
 }
 
 function heatmapClass(value) {
@@ -859,6 +1161,7 @@ function initials(name) {
 }
 
 function renderRmMatrix(areaManagers) {
+  if (!els.rmMatrix) return;
   els.rmMatrix.innerHTML = regionalSummary(areaManagers).map((record, index) => `
     <button class="rm-card ${state.rm === record.rm ? "selected" : ""}" type="button" data-rm="${record.rm}">
       <span class="rm-card-name">${record.rm}</span>
@@ -1105,12 +1408,74 @@ function renderAttendanceHeatmap(areaManagers) {
   });
 }
 
+function renderInductionChart() {
+  if (!els.inductionChart) return;
+  const rows = (data.induction || [])
+    .filter((record) => Number.isFinite(record.target) || Number.isFinite(record.actual))
+    .slice(-8);
+
+  if (!rows.length) {
+    els.inductionChart.innerHTML = `<p class="empty">Add Wk, Ind Gros/ Target, and Ind. Actual in the Induction and Gehru Data sheet to show induction arrival trends.</p>`;
+    return;
+  }
+
+  const width = 920;
+  const height = 310;
+  const pad = { top: 34, right: 34, bottom: 52, left: 58 };
+  const chartWidth = width - pad.left - pad.right;
+  const chartHeight = height - pad.top - pad.bottom;
+  const maxValue = 100;
+  const barGap = 18;
+  const barWidth = Math.max(28, (chartWidth - barGap * (rows.length - 1)) / rows.length);
+  const x = (index) => pad.left + index * (barWidth + barGap);
+  const y = (value) => pad.top + ((maxValue - Math.max(0, Math.min(maxValue, value || 0))) / maxValue) * chartHeight;
+  const latest = rows.at(-1);
+  const latestGap = Number.isFinite(latest.target) && Number.isFinite(latest.actual) ? Math.max(0, latest.target - latest.actual) : null;
+
+  els.inductionChart.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Weekly induction no-show percentage">
+      ${[0, 0.25, 0.5, 0.75, 1].map((step) => {
+        const value = Math.round(maxValue * step);
+        return `
+          <line class="grid-line" x1="${pad.left}" x2="${width - pad.right}" y1="${y(value)}" y2="${y(value)}"></line>
+        <text x="${pad.left - 12}" y="${y(value) + 4}" text-anchor="end" fill="#64748b" font-size="12">${value}%</text>
+        `;
+      }).join("")}
+      ${rows.map((record, index) => {
+        const noShow = Number.isFinite(record.arrivalPct) ? Math.max(0, 100 - record.arrivalPct) : null;
+        const gap = Number.isFinite(record.target) && Number.isFinite(record.actual) ? Math.max(0, record.target - record.actual) : null;
+        const heightValue = Number.isFinite(noShow) ? y(0) - y(noShow) : 0;
+        const fill = noShow > 35 ? "#d14343" : noShow > 20 ? "#0f8fbd" : "#2563eb";
+        return `
+          <g>
+            <rect class="bar" x="${x(index)}" y="${y(noShow)}" width="${barWidth}" height="${Math.max(3, heightValue)}" rx="7" fill="${fill}">
+              <title>${record.week}: ${pctRound(noShow)} no-show / ${gap ?? "n/a"} people did not arrive</title>
+            </rect>
+            <text x="${x(index) + barWidth / 2}" y="${y(noShow) - 8}" text-anchor="middle" fill="#102033" font-size="14" font-weight="950">${pctRound(noShow)}</text>
+            <text x="${x(index) + barWidth / 2}" y="${height - 18}" text-anchor="middle" fill="#64748b" font-size="12" font-weight="900">${String(record.week).replace("Week ", "W")}</text>
+          </g>
+        `;
+      }).join("")}
+      <g class="chart-callout">
+        <rect x="${width - 266}" y="18" width="228" height="62" rx="12"></rect>
+        <text x="${width - 248}" y="42">${escapeHtml(latest.week)} no-show</text>
+        <text x="${width - 248}" y="63">${pctRound(Number.isFinite(latest.arrivalPct) ? 100 - latest.arrivalPct : null)} / ${latestGap ?? "n/a"} people</text>
+      </g>
+      <text x="${pad.left}" y="20" fill="#123a69" font-size="13" font-weight="950">Percentage of invited inductees who did not arrive</text>
+    </svg>
+  `;
+}
+
 function renderTeacherGrowthChart() {
   if (!els.teacherGrowthChart) return;
+  if (state.staffFocus === "retention") {
+    renderRetentionTrend();
+    return;
+  }
 
   const rows = (data.peopleMovement || [])
     .filter((record) => Number.isFinite(record.employed) && Number.isFinite(record.net))
-    .slice(-12);
+    .slice(-8);
 
   if (!rows.length) {
     els.teacherGrowthChart.innerHTML = `<p class="empty">Add an Emp Attrition tab with Employed, Hired, and Attrition rows to show teacher hiring growth.</p>`;
@@ -1122,8 +1487,9 @@ function renderTeacherGrowthChart() {
   }
   const selected = rows.find((record) => record.week === state.selectedTeacherWeek) || rows.at(-1);
   const width = 920;
-  const height = 380;
-  const pad = { top: 44, right: 48, bottom: 78, left: 78 };
+  if (els.staffTrendTitle) els.staffTrendTitle.textContent = "Teacher Net Increase";
+  const height = 320;
+  const pad = { top: 44, right: 48, bottom: 70, left: 78 };
   const chartWidth = width - pad.left - pad.right;
   const chartHeight = height - pad.top - pad.bottom;
   const employedValues = rows.map((record) => record.employed);
@@ -1135,8 +1501,8 @@ function renderTeacherGrowthChart() {
   const maxNet = Math.max(1, ...rows.map((record) => Math.abs(record.net)));
   const x = (index) => pad.left + (rows.length === 1 ? chartWidth / 2 : (index / (rows.length - 1)) * chartWidth);
   const y = (value) => pad.top + ((employedMax - value) / (employedMax - employedMin)) * chartHeight;
-  const netBaseY = height - 44;
-  const netScale = 56 / maxNet;
+  const netBaseY = height - 86;
+  const netScale = 40 / maxNet;
   const points = rows.map((record, index) => `${x(index).toFixed(1)},${y(record.employed).toFixed(1)}`).join(" ");
   const ticks = [employedMin, employedMin + (employedMax - employedMin) / 2, employedMax];
   const selectedIndex = rows.findIndex((record) => record.week === selected.week);
@@ -1147,8 +1513,8 @@ function renderTeacherGrowthChart() {
     <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Teaching staff net increase by week">
       <defs>
         <linearGradient id="teacherLineFill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stop-color="#3b6ea8" stop-opacity="0.2"></stop>
-          <stop offset="100%" stop-color="#3b6ea8" stop-opacity="0"></stop>
+          <stop offset="0%" stop-color="#2563eb" stop-opacity="0.2"></stop>
+          <stop offset="100%" stop-color="#2563eb" stop-opacity="0"></stop>
         </linearGradient>
       </defs>
       ${ticks.map((tick) => `
@@ -1156,32 +1522,32 @@ function renderTeacherGrowthChart() {
         <text x="${pad.left - 12}" y="${y(tick) + 4}" text-anchor="end" fill="#6b7280" font-size="11">${Math.round(tick)}</text>
       `).join("")}
       <polygon points="${pad.left},${height - pad.bottom} ${points} ${width - pad.right},${height - pad.bottom}" fill="url(#teacherLineFill)"></polygon>
-      <polyline points="${points}" fill="none" stroke="#3b6ea8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></polyline>
+      <polyline points="${points}" fill="none" stroke="#2563eb" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></polyline>
       <line class="axis" x1="${pad.left}" x2="${width - pad.right}" y1="${netBaseY}" y2="${netBaseY}"></line>
       ${rows.map((record, index) => {
         const barHeight = Math.abs(record.net) * netScale;
         const barY = record.net >= 0 ? netBaseY - barHeight : netBaseY;
-        const fill = record.net >= 0 ? "#0f766e" : "#b42318";
+        const fill = record.net >= 0 ? "#0f8fbd" : "#d14343";
         const selectedClass = record.week === selected.week ? " selected" : "";
         return `
           <g class="teacher-week${selectedClass}" tabindex="0" role="button" data-staff-week="${escapeAttr(record.week)}">
             <title>${record.week}: ${record.employed} employed teachers, net ${record.net > 0 ? "+" : ""}${record.net}</title>
             <rect x="${x(index) - 14}" y="${pad.top - 8}" width="28" height="${height - pad.top - 20}" rx="12" fill="transparent"></rect>
             <rect class="teacher-net-bar" x="${x(index) - 10}" y="${barY}" width="20" height="${Math.max(4, barHeight)}" rx="5" fill="${fill}"></rect>
-            <circle class="teacher-point" cx="${x(index)}" cy="${y(record.employed)}" r="5.5" fill="#ffffff" stroke="#3b6ea8" stroke-width="2.5"></circle>
-            <text x="${x(index)}" y="${record.net >= 0 ? barY - 7 : barY + barHeight + 15}" text-anchor="middle" fill="${fill}" font-size="12" font-weight="900">${record.net > 0 ? "+" : ""}${record.net}</text>
-            <text x="${x(index)}" y="${height - 13}" text-anchor="middle" fill="#4b5563" font-size="12" font-weight="750">${String(record.week).replace("Week ", "W")}</text>
+            <circle class="teacher-point" cx="${x(index)}" cy="${y(record.employed)}" r="5.5" fill="#ffffff" stroke="#2563eb" stroke-width="2.5"></circle>
+            <text x="${x(index)}" y="${record.net >= 0 ? barY - 7 : Math.min(height - 36, barY + barHeight + 14)}" text-anchor="middle" fill="${fill}" font-size="12" font-weight="900">${record.net > 0 ? "+" : ""}${record.net}</text>
+            <text x="${x(index)}" y="${height - 15}" text-anchor="middle" fill="#4b5563" font-size="12" font-weight="750">${String(record.week).replace("Week ", "W")}</text>
           </g>
         `;
       }).join("")}
-      <line x1="${selectedX}" x2="${selectedX}" y1="${pad.top - 2}" y2="${netBaseY + 14}" stroke="#c76f2d" stroke-width="2" stroke-dasharray="5 5"></line>
-      <circle cx="${selectedX}" cy="${selectedY}" r="8" fill="#ffffff" stroke="#c76f2d" stroke-width="3"></circle>
+      <line x1="${selectedX}" x2="${selectedX}" y1="${pad.top - 2}" y2="${netBaseY + 14}" stroke="#0f8fbd" stroke-width="2" stroke-dasharray="5 5"></line>
+      <circle cx="${selectedX}" cy="${selectedY}" r="8" fill="#ffffff" stroke="#0f8fbd" stroke-width="3"></circle>
       <g class="teacher-callout">
         <rect x="${Math.min(width - 300, Math.max(pad.left, selectedX - 132))}" y="14" width="264" height="58" rx="12"></rect>
         <text x="${Math.min(width - 284, Math.max(pad.left + 16, selectedX - 116))}" y="38">${escapeHtml(selected.week)} / ${selected.employed} teachers</text>
         <text x="${Math.min(width - 284, Math.max(pad.left + 16, selectedX - 116))}" y="58">Net ${selected.net > 0 ? "+" : ""}${selected.net}${Number.isFinite(selected.hired) && Number.isFinite(selected.exited) ? ` / ${selected.hired} hired, ${selected.exited} exited` : ""}</text>
       </g>
-      <text x="${pad.left}" y="22" fill="#3b6ea8" font-size="13" font-weight="900">Teaching staff</text>
+      <text x="${pad.left}" y="22" fill="#123a69" font-size="13" font-weight="900">Teaching staff</text>
     </svg>
   `;
   els.teacherGrowthChart.querySelectorAll("[data-staff-week]").forEach((item) => {
@@ -1200,6 +1566,51 @@ function renderTeacherGrowthChart() {
 
 }
 
+function renderRetentionTrend() {
+  const rows = (data.peopleMovement || [])
+    .filter((record) => Number.isFinite(record.retention))
+    .slice(-8);
+  if (els.staffTrendTitle) els.staffTrendTitle.textContent = "Employee Retention Trend";
+  if (!rows.length) {
+    els.teacherGrowthChart.innerHTML = `<p class="empty">Add employee retention data in the Employee Attrition worksheet to show retention trend.</p>`;
+    return;
+  }
+
+  const width = 920;
+  const height = 300;
+  const pad = { top: 34, right: 44, bottom: 54, left: 62 };
+  const chartWidth = width - pad.left - pad.right;
+  const chartHeight = height - pad.top - pad.bottom;
+  const min = Math.max(0, Math.min(...rows.map((record) => record.retention)) - 5);
+  const max = Math.min(100, Math.max(...rows.map((record) => record.retention)) + 5);
+  const x = (index) => pad.left + (rows.length === 1 ? chartWidth / 2 : (index / (rows.length - 1)) * chartWidth);
+  const y = (value) => pad.top + ((max - value) / Math.max(1, max - min)) * chartHeight;
+  const points = rows.map((record, index) => `${x(index)},${y(record.retention)}`).join(" ");
+  const latest = rows.at(-1);
+
+  els.teacherGrowthChart.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Employee retention trend">
+      ${[min, (min + max) / 2, max].map((tick) => `
+        <line class="grid-line" x1="${pad.left}" x2="${width - pad.right}" y1="${y(tick)}" y2="${y(tick)}"></line>
+        <text x="${pad.left - 12}" y="${y(tick) + 4}" text-anchor="end" fill="#64748b" font-size="12">${pctRound(tick)}</text>
+      `).join("")}
+      <polyline points="${points}" fill="none" stroke="#2563eb" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"></polyline>
+      ${rows.map((record, index) => `
+        <circle cx="${x(index)}" cy="${y(record.retention)}" r="7" fill="#ffffff" stroke="${record.retention < 82 ? "#d14343" : "#0f8fbd"}" stroke-width="3">
+          <title>${record.week}: ${pctRound(record.retention)} retention</title>
+        </circle>
+        <text x="${x(index)}" y="${y(record.retention) - 12}" text-anchor="middle" fill="#102033" font-size="13" font-weight="950">${pctRound(record.retention)}</text>
+        <text x="${x(index)}" y="${height - 16}" text-anchor="middle" fill="#64748b" font-size="12" font-weight="900">${String(record.week).replace("Week ", "W")}</text>
+      `).join("")}
+      <g class="chart-callout">
+        <rect x="${width - 244}" y="18" width="206" height="56" rx="12"></rect>
+        <text x="${width - 226}" y="42">${escapeHtml(latest.week)}</text>
+        <text x="${width - 226}" y="61">Retention ${pctRound(latest.retention)}</text>
+      </g>
+    </svg>
+  `;
+}
+
 function renderTables(areaManagers) {
   const liveBranchRows = Object.values(data.operations?.rmSummary || {}).map((record) => ({
     rm: record.rm,
@@ -1208,30 +1619,73 @@ function renderTables(areaManagers) {
     fourWeekGrowthPct: null,
     pipelineTeachers: null,
   }));
+  const allBranchRows = (data.branchGrowth?.length ? data.branchGrowth : liveBranchRows);
+  if (els.branchRmSelect) {
+    const rmOptions = unique(allBranchRows.map((record) => record.rm)).filter(Boolean);
+    if (state.branchRmFilter && !rmOptions.includes(state.branchRmFilter)) state.branchRmFilter = null;
+    if (state.selectedBranchRm && !rmOptions.includes(state.selectedBranchRm)) state.selectedBranchRm = null;
+    els.branchRmSelect.innerHTML = `<option value="">All RMs</option>${rmOptions.map((rm) => `<option value="${escapeAttr(rm)}" ${state.branchRmFilter === rm ? "selected" : ""}>${escapeHtml(rm)}</option>`).join("")}`;
+    els.branchRmSelect.onchange = () => {
+      state.branchRmFilter = els.branchRmSelect.value || null;
+      if (state.branchRmFilter && state.selectedBranchRm !== state.branchRmFilter) state.selectedBranchRm = null;
+      renderTables(filteredAreaManagers());
+    };
+  }
   const branchGrowthRows = (data.branchGrowth?.length ? data.branchGrowth : liveBranchRows)
-    .filter((record) => state.rm === "All" || record.rm === state.rm)
+    .filter((record) => !state.branchRmFilter || record.rm === state.branchRmFilter)
     .sort((a, b) => b.fourWeekGrowth - a.fourWeekGrowth);
 
   if (els.branchGrowthTable) {
     els.branchGrowthTable.innerHTML = branchGrowthRows.map((record) => {
       const status = milestoneStatus(record);
+      const isSelected = state.selectedBranchRm === record.rm;
+      const liveRows = (data.operations?.ams || [])
+        .filter((item) => item.rm === record.rm)
+        .sort((a, b) => (b.branches || 0) - (a.branches || 0));
+      const fallbackRows = data.areaManagers
+        .filter((item) => item.rm === record.rm)
+        .map((item) => ({ am: item.am, branches: null }));
+      const amRows = liveRows.length ? liveRows : fallbackRows;
+      const growthTone = Number.isFinite(record.fourWeekGrowthPct)
+        ? (record.fourWeekGrowthPct < 0 ? "negative" : record.fourWeekGrowthPct < 2 ? "neutral" : "positive")
+        : "muted-cell";
+      const expansion = isSelected
+        ? `<tr class="branch-expansion-row">
+            <td colspan="5">
+              <div class="branch-expansion">
+                <div class="branch-expansion-head">
+                  <strong>Area Manager Branch Detail</strong>
+                  <span>Current branches / 4W growth</span>
+                </div>
+                ${amRows.map((item, index) => `
+                  <div class="branch-am-item">
+                    <span>${index + 1}. ${escapeHtml(item.am)}</span>
+                    <strong>${Number.isFinite(item.branches) ? item.branches : "n/a"} branches</strong>
+                    <em class="muted-cell">Not available</em>
+                  </div>
+                `).join("") || `<p class="empty">No Area Manager branch detail available.</p>`}
+              </div>
+            </td>
+          </tr>`
+        : "";
       return `
-        <tr>
+        <tr class="${isSelected ? "selected-row" : ""}">
           <td><button class="text-link" type="button" data-branch-rm="${escapeAttr(record.rm)}">${escapeHtml(record.rm)}</button></td>
           <td class="metric">${data.operations?.rmSummary?.[record.rm]?.branches ?? record.latest.branches}</td>
-          <td class="${record.fourWeekGrowthPct >= 0 ? "positive" : "negative"}">${pct(record.fourWeekGrowthPct)}</td>
+          <td class="${growthTone}">${pct(record.fourWeekGrowthPct)}</td>
           <td class="metric">${record.pipelineTeachers ?? "n/a"}</td>
           <td class="metric milestone-cell">
             <strong>${status.value}</strong>
             <span class="${status.className}">${status.note}</span>
           </td>
         </tr>
+        ${expansion}
       `;
     }).join("") || `<tr><td colspan="5" class="empty">Add a Branch Per RM tab to the Google Sheet to show branch expansion.</td></tr>`;
 
     els.branchGrowthTable.querySelectorAll("[data-branch-rm]").forEach((button) => {
       button.onclick = () => {
-        state.selectedBranchRm = button.dataset.branchRm;
+        state.selectedBranchRm = state.selectedBranchRm === button.dataset.branchRm ? null : button.dataset.branchRm;
         renderTables(filteredAreaManagers());
       };
     });
@@ -1258,54 +1712,17 @@ function renderTables(areaManagers) {
       : `<tr><td colspan="3" class="empty">Select an RM above to view Area Manager branch detail.</td></tr>`;
   }
 
-  els.rmTable.innerHTML = regionalSummary(areaManagers).map((record) => {
-    const isSelected = record.rm === state.selectedCapacityRm;
-    const liveRows = (data.operations?.ams || [])
-      .filter((item) => item.rm === record.rm)
-      .map((item) => ({
-        am: item.am,
-        tms: item.tms,
-        vacancies: tmVacanciesForAreaManager(item.tms),
-      }))
-      .sort((a, b) => (b.vacancies || 0) - (a.vacancies || 0));
-    const fallbackRows = data.areaManagers
-      .filter((item) => item.rm === record.rm)
-      .map((item) => ({ am: item.am, tms: null, vacancies: null }));
-    const rows = liveRows.length ? liveRows : fallbackRows;
-    const detailRows = rows.map((item, index) => `
-      <div class="am-capacity-item">
-        <span>${index + 1}. ${escapeHtml(item.am)}</span>
-        <strong>${Number.isFinite(item.tms) ? item.tms : "n/a"} TMs</strong>
-        <em>${Number.isFinite(item.vacancies) ? item.vacancies : "n/a"} vacancies</em>
-      </div>
-    `).join("");
-    const expansion = isSelected
-      ? `<tr class="am-expansion-row">
-          <td colspan="5">
-            <div class="am-expansion">
-              ${detailRows || `<p class="empty">No Area Manager detail available for ${escapeHtml(record.rm)}.</p>`}
-            </div>
-          </td>
-        </tr>`
-      : "";
-    return `
-      <tr class="${isSelected ? "selected-row" : ""}">
-        <td><button class="text-link" type="button" data-capacity-rm="${escapeAttr(record.rm)}">${escapeHtml(record.rm)}</button></td>
+  if (els.rmTable) {
+    els.rmTable.innerHTML = regionalSummary(areaManagers).map((record) => `
+      <tr>
+        <td>${escapeHtml(record.rm)}</td>
         <td class="metric ${Number.isFinite(record.vacancyPct) && record.vacancyPct > 0 ? "negative" : "positive"}">${pct(record.vacancyPct)}</td>
         <td class="metric">${record.ams}</td>
         <td class="metric">${record.tms ?? "n/a"}</td>
         <td class="metric">${record.vacantTmCapacity ?? "n/a"}</td>
       </tr>
-      ${expansion}
-    `;
-  }).join("") || `<tr><td colspan="5" class="empty">No regional manager data found.</td></tr>`;
-
-  els.rmTable.querySelectorAll("[data-capacity-rm]").forEach((button) => {
-    button.onclick = () => {
-      state.selectedCapacityRm = state.selectedCapacityRm === button.dataset.capacityRm ? null : button.dataset.capacityRm;
-      renderTables(filteredAreaManagers());
-    };
-  });
+    `).join("") || `<tr><td colspan="5" class="empty">No regional manager data found.</td></tr>`;
+  }
 
   els.amTable.innerHTML = areaManagers
     .slice()
@@ -1324,6 +1741,14 @@ function renderTables(areaManagers) {
 
 function render() {
   const areaManagers = filteredAreaManagers();
+  document.body.dataset.activeTab = state.activeTab;
+  if (els.attendanceViewSelect) {
+    els.attendanceViewSelect.value = state.attendanceView;
+    els.attendanceViewSelect.onchange = () => {
+      state.attendanceView = els.attendanceViewSelect.value;
+      render();
+    };
+  }
   document.querySelectorAll("[data-view-tab]").forEach((button) => {
     button.classList.toggle("selected", button.dataset.viewTab === state.activeTab);
     button.onclick = () => {
@@ -1332,11 +1757,20 @@ function render() {
     };
   });
   document.querySelectorAll("[data-tab-panel]").forEach((panel) => {
-    panel.hidden = panel.dataset.tabPanel !== state.activeTab;
+    const tabHidden = panel.dataset.tabPanel !== state.activeTab;
+    const staffPanel = panel.dataset.staffPanel;
+    const staffHidden = state.activeTab === "staff" && staffPanel
+      ? !staffPanel.split(" ").includes(state.staffFocus)
+      : false;
+    panel.hidden = tabHidden || staffHidden;
   });
   renderKpis(data.areaManagers);
+  renderStudentOrgKpis(data.areaManagers);
+  renderHealthBand(data.areaManagers);
+  renderFocusPanel(areaManagers);
   renderRmMatrix(data.areaManagers);
   renderChart(areaManagers);
+  renderInductionChart();
   renderTeacherGrowthChart();
   renderTables(areaManagers);
 }

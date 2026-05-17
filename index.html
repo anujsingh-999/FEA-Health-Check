@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FEA Performance</title>
-    <link rel="stylesheet" href="styles.css?v=20260515d" />
+    <title>FEA Performance Dashboard</title>
+    <link rel="stylesheet" href="styles.css?v=20260517g" />
   </head>
   <body>
     <main class="shell">
       <header class="topbar">
         <div>
-          <h1>FEA Performance</h1>
+          <h1>FEA Performance Dashboard</h1>
         </div>
       </header>
 
@@ -19,115 +19,107 @@
         <button type="button" data-view-tab="staff">Staff Capacity Building</button>
       </nav>
 
-      <section id="kpis" class="kpi-grid" aria-label="Top-line attendance metrics"></section>
+      <section id="studentOrgKpis" class="org-kpi-grid" data-tab-panel="student" aria-label="Organization student metrics"></section>
 
-      <section class="matrix-row" data-tab-panel="student">
-        <article class="panel matrix-panel">
-          <div class="panel-heading">
-            <h2>Four-Week Attendance</h2>
-          </div>
-          <div id="rmMatrix" class="rm-matrix"></div>
-        </article>
-      </section>
+      <section class="dashboard-layout">
+        <aside id="kpis" class="kpi-grid" aria-label="Top-line dashboard metrics"></aside>
 
-      <section class="main-grid" data-tab-panel="student">
-        <article class="panel trend-panel">
-          <div class="panel-heading">
-            <h2 id="trendTitle">Performance over time</h2>
-            <div id="trendLegend" class="legend"></div>
-          </div>
-          <div id="trendChart" class="chart"></div>
-        </article>
-      </section>
+        <div class="dashboard-stage">
+          <section class="main-grid" data-tab-panel="student">
+            <article class="panel trend-panel">
+              <div class="panel-heading">
+                <h2 id="trendTitle">Performance over time</h2>
+                <div class="heading-actions">
+                  <label class="compact-filter">
+                    Attendance view
+                    <select id="attendanceViewSelect">
+                      <option value="latest">Latest week</option>
+                      <option value="4w" selected>4-week average</option>
+                      <option value="3m">3-month average</option>
+                    </select>
+                  </label>
+                  <div id="trendLegend" class="legend"></div>
+                </div>
+              </div>
+              <div id="trendChart" class="chart"></div>
+            </article>
+          </section>
 
-      <section class="panel" data-tab-panel="staff">
-        <div class="panel-heading">
-          <h2>RM Branch Growth</h2>
+          <section class="panel" data-tab-panel="staff" data-staff-panel="induction">
+            <div class="panel-heading">
+              <h2>Induction No-Show Trend</h2>
+            </div>
+            <div id="inductionChart" class="chart induction-chart"></div>
+          </section>
+
+          <section class="panel" data-tab-panel="staff" data-staff-panel="teacher retention">
+            <div class="panel-heading">
+              <h2 id="staffTrendTitle">Teacher Net Increase</h2>
+            </div>
+            <div id="teacherGrowthChart" class="chart teacher-growth-chart"></div>
+          </section>
+
+          <section class="panel branch-growth-panel" data-tab-panel="staff">
+            <div class="panel-heading">
+              <h2>RM Branch Growth</h2>
+              <label class="compact-filter">
+                RM
+                <select id="branchRmSelect"></select>
+              </label>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>RM</th>
+                    <th>Active branches</th>
+                    <th>4W growth %</th>
+                    <th>Pipeline teachers</th>
+                    <th>December 2026 milestone</th>
+                  </tr>
+                </thead>
+                <tbody id="branchGrowthTable"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="split-grid">
+            <article class="panel" data-tab-panel="student">
+              <div class="panel-heading">
+                <h2>Area Manager Performance</h2>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Rank</th>
+                      <th>AM</th>
+                      <th>State</th>
+                      <th>RM</th>
+                      <th>Latest</th>
+                      <th>4W Avg</th>
+                    </tr>
+                  </thead>
+                  <tbody id="amTable"></tbody>
+                </table>
+              </div>
+            </article>
+          </section>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>RM</th>
-                <th>Active branches</th>
-                <th>4W growth %</th>
-                <th>Pipeline teachers</th>
-                <th>December 2026 milestone</th>
-              </tr>
-            </thead>
-            <tbody id="branchGrowthTable"></tbody>
-          </table>
-        </div>
-        <div class="table-wrap branch-detail-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Area Manager</th>
-                <th>Current branches</th>
-                <th>4W growth %</th>
-              </tr>
-            </thead>
-            <tbody id="branchAmGrowthTable">
-              <tr><td colspan="3" class="empty">Select an RM above to view Area Manager branch detail.</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
 
-      <section class="panel" data-tab-panel="staff">
-        <div class="panel-heading">
-          <h2>Teaching Staff Net Increase</h2>
-        </div>
-        <div id="teacherGrowthChart" class="chart teacher-growth-chart"></div>
-      </section>
-
-      <section class="split-grid">
-        <article class="panel" data-tab-panel="staff">
-          <div class="panel-heading">
-            <h2>Management Capacity Building</h2>
+        <aside class="focus-panel" aria-label="Priority attention list">
+          <div class="focus-heading">
+            <span id="focusTitle">Needs Attention</span>
+            <strong id="focusCount">0</strong>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>RM</th>
-                  <th>Vacancies %</th>
-                  <th>AMs</th>
-                  <th>TMs</th>
-                  <th>Vacant TM capacity</th>
-                </tr>
-              </thead>
-              <tbody id="rmTable"></tbody>
-            </table>
-          </div>
-        </article>
-
-        <article class="panel" data-tab-panel="student">
-          <div class="panel-heading">
-            <h2>Area Manager Performance</h2>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Rank</th>
-                  <th>AM</th>
-                  <th>State</th>
-                  <th>RM</th>
-                  <th>Latest</th>
-                  <th>4W Avg</th>
-                </tr>
-              </thead>
-              <tbody id="amTable"></tbody>
-            </table>
-          </div>
-        </article>
+          <div id="focusList" class="focus-list"></div>
+        </aside>
       </section>
     </main>
 
     <script src="dashboard-data.js?v=20260513a"></script>
     <script src="branch-structure.js?v=20260513a"></script>
     <script src="operations-data.js?v=20260515a"></script>
-    <script src="app.js?v=20260515h"></script>
+    <script src="app.js?v=20260517g"></script>
   </body>
 </html>
