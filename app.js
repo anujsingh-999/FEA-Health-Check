@@ -1445,7 +1445,7 @@ function renderInductionChart() {
         const noShow = Number.isFinite(record.arrivalPct) ? Math.max(0, 100 - record.arrivalPct) : null;
         const gap = Number.isFinite(record.target) && Number.isFinite(record.actual) ? Math.max(0, record.target - record.actual) : null;
         const heightValue = Number.isFinite(noShow) ? y(0) - y(noShow) : 0;
-        const fill = noShow > 35 ? "#d14343" : noShow > 20 ? "#0f8fbd" : "#2563eb";
+        const fill = noShow > 35 ? "#d14343" : noShow > 20 ? "#f59e0b" : "#0f8f7a";
         return `
           <g>
             <rect class="bar" x="${x(index)}" y="${y(noShow)}" width="${barWidth}" height="${Math.max(3, heightValue)}" rx="7" fill="${fill}">
@@ -1513,8 +1513,8 @@ function renderTeacherGrowthChart() {
     <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Teaching staff net increase by week">
       <defs>
         <linearGradient id="teacherLineFill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stop-color="#2563eb" stop-opacity="0.2"></stop>
-          <stop offset="100%" stop-color="#2563eb" stop-opacity="0"></stop>
+          <stop offset="0%" stop-color="#0f8f7a" stop-opacity="0.18"></stop>
+          <stop offset="100%" stop-color="#0f8f7a" stop-opacity="0"></stop>
         </linearGradient>
       </defs>
       ${ticks.map((tick) => `
@@ -1522,32 +1522,32 @@ function renderTeacherGrowthChart() {
         <text x="${pad.left - 12}" y="${y(tick) + 4}" text-anchor="end" fill="#6b7280" font-size="11">${Math.round(tick)}</text>
       `).join("")}
       <polygon points="${pad.left},${height - pad.bottom} ${points} ${width - pad.right},${height - pad.bottom}" fill="url(#teacherLineFill)"></polygon>
-      <polyline points="${points}" fill="none" stroke="#2563eb" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></polyline>
+      <polyline points="${points}" fill="none" stroke="#0f8f7a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></polyline>
       <line class="axis" x1="${pad.left}" x2="${width - pad.right}" y1="${netBaseY}" y2="${netBaseY}"></line>
       ${rows.map((record, index) => {
         const barHeight = Math.abs(record.net) * netScale;
         const barY = record.net >= 0 ? netBaseY - barHeight : netBaseY;
-        const fill = record.net >= 0 ? "#0f8fbd" : "#d14343";
+        const fill = record.net < 0 ? "#d14343" : record.net === 0 ? "#f59e0b" : "#0f8f7a";
         const selectedClass = record.week === selected.week ? " selected" : "";
         return `
           <g class="teacher-week${selectedClass}" tabindex="0" role="button" data-staff-week="${escapeAttr(record.week)}">
             <title>${record.week}: ${record.employed} employed teachers, net ${record.net > 0 ? "+" : ""}${record.net}</title>
             <rect x="${x(index) - 14}" y="${pad.top - 8}" width="28" height="${height - pad.top - 20}" rx="12" fill="transparent"></rect>
             <rect class="teacher-net-bar" x="${x(index) - 10}" y="${barY}" width="20" height="${Math.max(4, barHeight)}" rx="5" fill="${fill}"></rect>
-            <circle class="teacher-point" cx="${x(index)}" cy="${y(record.employed)}" r="5.5" fill="#ffffff" stroke="#2563eb" stroke-width="2.5"></circle>
+            <circle class="teacher-point" cx="${x(index)}" cy="${y(record.employed)}" r="5.5" fill="#ffffff" stroke="${fill}" stroke-width="2.5"></circle>
             <text x="${x(index)}" y="${record.net >= 0 ? barY - 7 : Math.min(height - 36, barY + barHeight + 14)}" text-anchor="middle" fill="${fill}" font-size="12" font-weight="900">${record.net > 0 ? "+" : ""}${record.net}</text>
             <text x="${x(index)}" y="${height - 15}" text-anchor="middle" fill="#4b5563" font-size="12" font-weight="750">${String(record.week).replace("Week ", "W")}</text>
           </g>
         `;
       }).join("")}
-      <line x1="${selectedX}" x2="${selectedX}" y1="${pad.top - 2}" y2="${netBaseY + 14}" stroke="#0f8fbd" stroke-width="2" stroke-dasharray="5 5"></line>
-      <circle cx="${selectedX}" cy="${selectedY}" r="8" fill="#ffffff" stroke="#0f8fbd" stroke-width="3"></circle>
+      <line x1="${selectedX}" x2="${selectedX}" y1="${pad.top - 2}" y2="${netBaseY + 14}" stroke="${selected.net < 0 ? "#d14343" : selected.net === 0 ? "#f59e0b" : "#0f8f7a"}" stroke-width="2" stroke-dasharray="5 5"></line>
+      <circle cx="${selectedX}" cy="${selectedY}" r="8" fill="#ffffff" stroke="${selected.net < 0 ? "#d14343" : selected.net === 0 ? "#f59e0b" : "#0f8f7a"}" stroke-width="3"></circle>
       <g class="teacher-callout">
         <rect x="${Math.min(width - 300, Math.max(pad.left, selectedX - 132))}" y="14" width="264" height="58" rx="12"></rect>
         <text x="${Math.min(width - 284, Math.max(pad.left + 16, selectedX - 116))}" y="38">${escapeHtml(selected.week)} / ${selected.employed} teachers</text>
         <text x="${Math.min(width - 284, Math.max(pad.left + 16, selectedX - 116))}" y="58">Net ${selected.net > 0 ? "+" : ""}${selected.net}${Number.isFinite(selected.hired) && Number.isFinite(selected.exited) ? ` / ${selected.hired} hired, ${selected.exited} exited` : ""}</text>
       </g>
-      <text x="${pad.left}" y="22" fill="#123a69" font-size="13" font-weight="900">Teaching staff</text>
+      <text x="${pad.left}" y="22" fill="#102033" font-size="13" font-weight="900">Teaching staff</text>
     </svg>
   `;
   els.teacherGrowthChart.querySelectorAll("[data-staff-week]").forEach((item) => {
@@ -1594,9 +1594,9 @@ function renderRetentionTrend() {
         <line class="grid-line" x1="${pad.left}" x2="${width - pad.right}" y1="${y(tick)}" y2="${y(tick)}"></line>
         <text x="${pad.left - 12}" y="${y(tick) + 4}" text-anchor="end" fill="#64748b" font-size="12">${pctRound(tick)}</text>
       `).join("")}
-      <polyline points="${points}" fill="none" stroke="#2563eb" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"></polyline>
+      <polyline points="${points}" fill="none" stroke="#0f8f7a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"></polyline>
       ${rows.map((record, index) => `
-        <circle cx="${x(index)}" cy="${y(record.retention)}" r="7" fill="#ffffff" stroke="${record.retention < 82 ? "#d14343" : "#0f8fbd"}" stroke-width="3">
+        <circle cx="${x(index)}" cy="${y(record.retention)}" r="7" fill="#ffffff" stroke="${record.retention < 82 ? "#d14343" : record.retention < 88 ? "#f59e0b" : "#0f8f7a"}" stroke-width="3">
           <title>${record.week}: ${pctRound(record.retention)} retention</title>
         </circle>
         <text x="${x(index)}" y="${y(record.retention) - 12}" text-anchor="middle" fill="#102033" font-size="13" font-weight="950">${pctRound(record.retention)}</text>
