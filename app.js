@@ -488,17 +488,21 @@ function readInduction(rows) {
   const weekIndex = headers.findIndex((label) => /^wk$|week/i.test(String(label)));
   const targetIndex = headers.findIndex((label) => /target/i.test(String(label)));
   const actualIndex = headers.findIndex((label) => /actual/i.test(String(label)));
+  const hiredIndex = headers.findIndex((label) => /hired|joined|selected|converted/i.test(String(label)));
   if (weekIndex < 0 || targetIndex < 0 || actualIndex < 0) return [];
 
   return rows.slice(1).map((row) => {
     const weekNumber = numericValue(row[weekIndex]);
     const target = numericValue(row[targetIndex]);
     const actual = numericValue(row[actualIndex]);
+    const hired = hiredIndex >= 0 ? numericValue(row[hiredIndex]) : null;
     return {
       week: Number.isFinite(weekNumber) ? `Week ${weekNumber}` : "",
       target,
       actual,
+      hired,
       arrivalPct: Number.isFinite(target) && target > 0 && Number.isFinite(actual) ? (actual / target) * 100 : null,
+      hiredPct: Number.isFinite(actual) && actual > 0 && Number.isFinite(hired) ? (hired / actual) * 100 : null,
     };
   }).filter((record) => record.week && (Number.isFinite(record.target) || Number.isFinite(record.actual)));
 }
@@ -794,16 +798,19 @@ function renderKpis(areaManagers) {
   ]);
   const staffCards = [
     ["Teaching Staff", Number.isFinite(currentTeachers) ? currentTeachers.toString() : "n/a", "Live count", "teacher"],
-    ["Employee Retention", pctRound(retention.retention), retention.week ? `${retention.week} / click for more` : "Click for more", "retention"],
-    ["Induction No-Show", pctRound(noShowPct), induction.week ? `${induction.week}: ${Math.max(0, (induction.target || 0) - (induction.actual || 0))} did not arrive / click for more` : "Click for more", "induction"],
-    ["Teacher Net Increase", Number.isFinite(people.net) ? `${people.net > 0 ? "+" : ""}${people.net}` : "n/a", people.week ? `${people.week} / click for more` : "Click for more", "teacher"],
+    ["Employee Retention", pctRound(retention.retention), retention.week ? `${retention.week} / click for more` : "Click for more", "retention", retention.retention < 85 ? "red" : retention.retention <= 90 ? "yellow" : "green"],
+    ["Induction No-Show", pctRound(noShowPct), induction.week ? `${induction.week}: ${Math.max(0, (induction.target || 0) - (induction.actual || 0))} did not arrive / click for more` : "Click for more", "induction", noShowPct > 20 ? "red" : noShowPct >= 10 ? "yellow" : "green"],
+    ...(Number.isFinite(induction.hiredPct)
+      ? [["Induction Hire %", pctRound(induction.hiredPct), `${induction.week}: ${induction.hired} hired from ${induction.actual} arrivals`, "induction", conversionTone(induction.hiredPct).replace("positive", "green").replace("neutral", "yellow").replace("negative", "red")]]
+      : []),
+    ["Teacher Net Increase", Number.isFinite(people.net) ? `${people.net > 0 ? "+" : ""}${people.net}` : "n/a", people.week ? `${people.week} / click for more` : "Click for more", "teacher", people.net < 0 ? "red" : people.net === 0 ? "yellow" : "green"],
     ["Branches / TM", Number.isFinite(branchesPerTm) ? branchesPerTm.toFixed(1) : "n/a", `${activeBranches} branches / ${hiredTms || "n/a"} TMs`, "capacity"],
   ];
   const cards = state.activeTab === "staff" ? staffCards : studentCards;
 
   els.kpis.innerHTML = cards
-    .map(([label, value, note, action]) => `
-      <article class="kpi-card ${state.activeTab === "student" ? "student-rm-card" : ""} ${state.rm === action || state.staffFocus === action ? "selected" : ""}" ${state.activeTab === "staff" ? `data-staff-focus="${escapeAttr(action)}"` : `data-rm-focus="${escapeAttr(action)}"`}>
+    .map(([label, value, note, action, tone]) => `
+      <article class="kpi-card ${state.activeTab === "student" ? "student-rm-card" : ""} ${tone ? `kpi-tone-${tone}` : ""} ${state.rm === action || state.staffFocus === action ? "selected" : ""}" ${state.activeTab === "staff" ? `data-staff-focus="${escapeAttr(action)}"` : `data-rm-focus="${escapeAttr(action)}"`}>
         <div class="kpi-label">${label}</div>
         <div class="kpi-value">${value}</div>
         <p class="kpi-note">${note}</p>
@@ -913,6 +920,7 @@ function renderFocusPanel(areaManagers) {
         rm: record.rm,
         title: record.rm,
         value: pctRound(record.vacancyPct),
+        tone: vacancyTone(record.vacancyPct),
         note: `${record.vacantTmCapacity ?? "n/a"} TM vacancies`,
       }));
 
@@ -939,7 +947,7 @@ function renderFocusPanel(areaManagers) {
               <strong>${escapeHtml(item.title)}</strong>
               <small>${escapeHtml(item.note)}</small>
             </div>
-            <em>${item.value}</em>
+            <em class="${item.tone}">${item.value}</em>
           </button>
           ${isSelected ? `
             <div class="focus-detail">
@@ -1074,15 +1082,29 @@ function toneClass(value) {
 function performanceTone(value, goodThreshold = 60, warningThreshold = 50) {
   if (!Number.isFinite(value)) return "muted-cell";
   if (value < warningThreshold) return "negative";
-  if (value < goodThreshold) return "neutral";
+  if (value <= goodThreshold) return "neutral";
   return "positive";
 }
 
 function performanceColor(value, goodThreshold = 60, warningThreshold = 50) {
   if (!Number.isFinite(value)) return "#7aa6c7";
   if (value < warningThreshold) return "#d14343";
-  if (value < goodThreshold) return "#f59e0b";
+  if (value <= goodThreshold) return "#f59e0b";
   return "#0f8f7a";
+}
+
+function vacancyTone(value) {
+  if (!Number.isFinite(value)) return "muted-cell";
+  if (value < 5) return "positive";
+  if (value <= 10) return "neutral";
+  return "negative";
+}
+
+function conversionTone(value) {
+  if (!Number.isFinite(value)) return "muted-cell";
+  if (value < 75) return "negative";
+  if (value <= 90) return "neutral";
+  return "positive";
 }
 
 function heatmapClass(value) {
@@ -1445,7 +1467,7 @@ function renderInductionChart() {
         const noShow = Number.isFinite(record.arrivalPct) ? Math.max(0, 100 - record.arrivalPct) : null;
         const gap = Number.isFinite(record.target) && Number.isFinite(record.actual) ? Math.max(0, record.target - record.actual) : null;
         const heightValue = Number.isFinite(noShow) ? y(0) - y(noShow) : 0;
-        const fill = noShow > 35 ? "#d14343" : noShow > 20 ? "#f59e0b" : "#0f8f7a";
+        const fill = noShow > 20 ? "#d14343" : noShow >= 10 ? "#f59e0b" : "#0f8f7a";
         return `
           <g>
             <rect class="bar" x="${x(index)}" y="${y(noShow)}" width="${barWidth}" height="${Math.max(3, heightValue)}" rx="7" fill="${fill}">
@@ -1596,7 +1618,7 @@ function renderRetentionTrend() {
       `).join("")}
       <polyline points="${points}" fill="none" stroke="#0f8f7a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"></polyline>
       ${rows.map((record, index) => `
-        <circle cx="${x(index)}" cy="${y(record.retention)}" r="7" fill="#ffffff" stroke="${record.retention < 82 ? "#d14343" : record.retention < 88 ? "#f59e0b" : "#0f8f7a"}" stroke-width="3">
+        <circle cx="${x(index)}" cy="${y(record.retention)}" r="7" fill="#ffffff" stroke="${record.retention < 85 ? "#d14343" : record.retention <= 90 ? "#f59e0b" : "#0f8f7a"}" stroke-width="3">
           <title>${record.week}: ${pctRound(record.retention)} retention</title>
         </circle>
         <text x="${x(index)}" y="${y(record.retention) - 12}" text-anchor="middle" fill="#102033" font-size="13" font-weight="950">${pctRound(record.retention)}</text>
@@ -1716,7 +1738,7 @@ function renderTables(areaManagers) {
     els.rmTable.innerHTML = regionalSummary(areaManagers).map((record) => `
       <tr>
         <td>${escapeHtml(record.rm)}</td>
-        <td class="metric ${Number.isFinite(record.vacancyPct) && record.vacancyPct > 0 ? "negative" : "positive"}">${pct(record.vacancyPct)}</td>
+        <td class="metric ${vacancyTone(record.vacancyPct)}">${pct(record.vacancyPct)}</td>
         <td class="metric">${record.ams}</td>
         <td class="metric">${record.tms ?? "n/a"}</td>
         <td class="metric">${record.vacantTmCapacity ?? "n/a"}</td>

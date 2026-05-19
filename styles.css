@@ -481,6 +481,30 @@ body[data-active-tab="student"] .focus-item span {
   box-shadow: 0 12px 28px rgba(37, 99, 235, 0.16);
 }
 
+.kpi-card.kpi-tone-green {
+  border-color: rgba(15, 143, 122, 0.36);
+}
+
+.kpi-card.kpi-tone-green::after {
+  background: var(--green);
+}
+
+.kpi-card.kpi-tone-yellow {
+  border-color: rgba(245, 158, 11, 0.42);
+}
+
+.kpi-card.kpi-tone-yellow::after {
+  background: #f59e0b;
+}
+
+.kpi-card.kpi-tone-red {
+  border-color: rgba(209, 67, 67, 0.42);
+}
+
+.kpi-card.kpi-tone-red::after {
+  background: var(--red);
+}
+
 .kpi-label {
   color: var(--muted);
   font-size: 0.73rem;
