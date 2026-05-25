@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FEA Performance Dashboard</title>
-    <link rel="stylesheet" href="styles.css?v=20260518a" />
+    <link rel="stylesheet" href="styles.css?v=20260525b" />
   </head>
   <body>
     <main class="shell">
@@ -14,18 +14,19 @@
         </div>
       </header>
 
-      <nav class="view-tabs" aria-label="Dashboard view">
-        <button type="button" data-view-tab="student">Student Capacity Building</button>
-        <button type="button" data-view-tab="staff">Staff Capacity Building</button>
+      <nav class="view-tabs flow-tabs" aria-label="Operational flow view">
+        <button type="button" data-view-tab="induction"><small>01</small> Inductee Arrival At Gahru</button>
+        <button type="button" data-view-tab="employment"><small>02</small> Employment</button>
+        <button type="button" data-view-tab="branch"><small>03</small> Branch Performance Matrix</button>
       </nav>
 
-      <section id="studentOrgKpis" class="org-kpi-grid" data-tab-panel="student" aria-label="Organization student metrics"></section>
+      <section id="studentOrgKpis" class="org-kpi-grid" data-tab-panel="branch" aria-label="Organization branch performance metrics"></section>
 
       <section class="dashboard-layout">
         <aside id="kpis" class="kpi-grid" aria-label="Top-line dashboard metrics"></aside>
 
         <div class="dashboard-stage">
-          <section class="main-grid" data-tab-panel="student">
+          <section class="main-grid" data-tab-panel="branch">
             <article class="panel trend-panel">
               <div class="panel-heading">
                 <h2 id="trendTitle">Performance over time</h2>
@@ -45,21 +46,21 @@
             </article>
           </section>
 
-          <section class="panel" data-tab-panel="staff" data-staff-panel="induction">
+          <section class="panel" data-tab-panel="induction">
             <div class="panel-heading">
-              <h2>Induction No-Show Trend</h2>
+              <h2>Inductee Arrival At Gahru</h2>
             </div>
             <div id="inductionChart" class="chart induction-chart"></div>
           </section>
 
-          <section class="panel" data-tab-panel="staff" data-staff-panel="teacher retention">
+          <section class="panel" data-tab-panel="employment" data-employment-panel="teacher retention capacity">
             <div class="panel-heading">
               <h2 id="staffTrendTitle">Teacher Net Increase</h2>
             </div>
             <div id="teacherGrowthChart" class="chart teacher-growth-chart"></div>
           </section>
 
-          <section class="panel branch-growth-panel" data-tab-panel="staff">
+          <section class="panel branch-growth-panel" data-tab-panel="branch">
             <div class="panel-heading">
               <h2>RM Branch Growth</h2>
               <label class="compact-filter">
@@ -83,8 +84,8 @@
             </div>
           </section>
 
-          <section class="split-grid">
-            <article class="panel" data-tab-panel="student">
+          <section class="split-grid" data-tab-panel="branch">
+            <article class="panel">
               <div class="panel-heading">
                 <h2>Area Manager Performance</h2>
               </div>
@@ -120,6 +121,6 @@
     <script src="dashboard-data.js?v=20260513a"></script>
     <script src="branch-structure.js?v=20260513a"></script>
     <script src="operations-data.js?v=20260515a"></script>
-    <script src="app.js?v=20260518c"></script>
+    <script src="app.js?v=20260525b"></script>
   </body>
 </html>

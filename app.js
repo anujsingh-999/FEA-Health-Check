@@ -17,13 +17,13 @@ const DECEMBER_2026_MILESTONES = {
 
 const state = {
   rm: "All",
-  activeTab: "student",
+  activeTab: "induction",
   attendanceView: "4w",
   branchRmFilter: null,
   selectedBranchRm: null,
   selectedCapacityRm: null,
   selectedTeacherWeek: null,
-  staffFocus: "induction",
+  staffFocus: "teacher",
 };
 
 const els = {
@@ -790,30 +790,55 @@ function renderKpis(areaManagers) {
   const induction = latestInduction();
   const currentTeachers = currentTeachingStaff();
   const noShowPct = Number.isFinite(induction.arrivalPct) ? 100 - induction.arrivalPct : null;
-  const studentCards = regionalSummary(areaManagers).map((record) => [
+  const branchCards = regionalSummary(areaManagers).map((record) => [
     record.rm,
     pctRound(attendanceMetricForRegional(record)),
     attendanceMetaForRegional(record),
     record.rm,
   ]);
-  const staffCards = [
+  const inductionCards = [
+    ["Induction Target", Number.isFinite(induction.target) ? induction.target.toString() : "n/a", induction.week ? `${induction.week} invitees` : "Target not available", null],
+    ["Day 1 Arrivals", Number.isFinite(induction.actual) ? induction.actual.toString() : "n/a", induction.week ? `${induction.week} at Gahru` : "Arrival not available", null, noShowTone(noShowPct).replace("positive", "green").replace("neutral", "yellow").replace("negative", "red")],
+    ["Arrival Rate", pctRound(induction.arrivalPct), induction.week ? `${induction.week} actual / target` : "Actual arrivals / target", null, noShowTone(noShowPct).replace("positive", "green").replace("neutral", "yellow").replace("negative", "red")],
+    ["No-Show Rate", pctRound(noShowPct), induction.week ? `${Math.max(0, (induction.target || 0) - (induction.actual || 0))} did not arrive` : "Target minus arrivals", null, noShowTone(noShowPct).replace("positive", "green").replace("neutral", "yellow").replace("negative", "red")],
+    ["Dropouts During Induction %", "n/a", "Awaiting dropout-count source field", null, null, "dropout-kpi", [
+      "Asked to discontinue - HR",
+      "Asked to discontinue - Behaviour",
+      "Health Issues",
+      "Exams",
+      "Another Job Opportunity",
+      "Unsatisfactory Performance",
+      "Did not accept extension",
+      "Did not join induction",
+    ]],
+  ];
+  const employmentCards = [
     ["Teaching Staff", Number.isFinite(currentTeachers) ? currentTeachers.toString() : "n/a", "Live count", "teacher"],
     ["Employee Retention", pctRound(retention.retention), retention.week ? `${retention.week} / click for more` : "Click for more", "retention", retention.retention < 85 ? "red" : retention.retention <= 90 ? "yellow" : "green"],
-    ["Induction No-Show", pctRound(noShowPct), induction.week ? `${induction.week}: ${Math.max(0, (induction.target || 0) - (induction.actual || 0))} did not arrive / click for more` : "Click for more", "induction", noShowPct > 20 ? "red" : noShowPct >= 10 ? "yellow" : "green"],
     ...(Number.isFinite(induction.hiredPct)
-      ? [["Induction Hire %", pctRound(induction.hiredPct), `${induction.week}: ${induction.hired} hired from ${induction.actual} arrivals`, "induction", conversionTone(induction.hiredPct).replace("positive", "green").replace("neutral", "yellow").replace("negative", "red")]]
-      : []),
+      ? [["Employment Rate", pctRound(induction.hiredPct), `${induction.week}: ${induction.hired} hired from ${induction.actual} arrivals`, null, conversionTone(induction.hiredPct).replace("positive", "green").replace("neutral", "yellow").replace("negative", "red")]]
+      : [["Employment Rate", "n/a", "Add hired-from-induction source field", null]]),
     ["Teacher Net Increase", Number.isFinite(people.net) ? `${people.net > 0 ? "+" : ""}${people.net}` : "n/a", people.week ? `${people.week} / click for more` : "Click for more", "teacher", people.net < 0 ? "red" : people.net === 0 ? "yellow" : "green"],
     ["Branches / TM", Number.isFinite(branchesPerTm) ? branchesPerTm.toFixed(1) : "n/a", `${activeBranches} branches / ${hiredTms || "n/a"} TMs`, "capacity"],
   ];
-  const cards = state.activeTab === "staff" ? staffCards : studentCards;
+  const cards = state.activeTab === "induction"
+    ? inductionCards
+    : state.activeTab === "employment"
+      ? employmentCards
+      : branchCards;
 
   els.kpis.innerHTML = cards
-    .map(([label, value, note, action, tone]) => `
-      <article class="kpi-card ${state.activeTab === "student" ? "student-rm-card" : ""} ${tone ? `kpi-tone-${tone}` : ""} ${state.rm === action || state.staffFocus === action ? "selected" : ""}" ${state.activeTab === "staff" ? `data-staff-focus="${escapeAttr(action)}"` : `data-rm-focus="${escapeAttr(action)}"`}>
+    .map(([label, value, note, action, tone, cardClass, details]) => `
+      <article class="kpi-card ${cardClass || ""} ${state.activeTab === "branch" ? "student-rm-card" : ""} ${tone ? `kpi-tone-${tone}` : ""} ${state.rm === action || state.staffFocus === action ? "selected" : ""}" ${state.activeTab === "employment" && action ? `data-staff-focus="${escapeAttr(action)}"` : state.activeTab === "branch" && action ? `data-rm-focus="${escapeAttr(action)}"` : ""}>
         <div class="kpi-label">${label}</div>
         <div class="kpi-value">${value}</div>
         <p class="kpi-note">${note}</p>
+        ${details ? `
+          <p class="dropout-reasons-label">Reason categories</p>
+          <ol class="dropout-reasons">
+            ${details.map((detail) => `<li>${escapeHtml(detail)}</li>`).join("")}
+          </ol>
+        ` : ""}
       </article>
     `)
     .join("");
@@ -848,10 +873,11 @@ function renderStudentOrgKpis(areaManagers) {
     ["3-Month Average", pctRound(threeMonthAvg), "Rolling 12-week attendance"],
     ["Enrolment %", pctRound(studentCapacityPct), Number.isFinite(currentStudents) ? `${currentStudents} students / ${totalStudentCapacity} capacity` : `${totalStudentCapacity} capacity; waiting for enrolment`],
     ["Active Branches", activeBranches.toString(), data.operations ? "Live branch count" : "Branches with attendance records"],
+    ["BI Achievement", "n/a", "Source mapping required"],
   ];
 
   els.studentOrgKpis.innerHTML = cards.map(([label, value, note]) => `
-    <article class="org-kpi-card">
+    <article class="org-kpi-card ${label === "BI Achievement" ? "pending" : ""}">
       <span>${label}</span>
       <strong>${value}</strong>
       <small>${note}</small>
@@ -866,7 +892,15 @@ function healthBandItems(areaManagers) {
   const retention = latestRetention().retention;
   const induction = latestInduction().arrivalPct;
 
-  if (state.activeTab === "staff") {
+  if (state.activeTab === "induction") {
+    const noShow = Number.isFinite(induction) ? 100 - induction : null;
+    return [
+      ["Arrival rate", induction, [[75, "Critical"], [90, "Watch"], [101, "Strong"]]],
+      ["No-show rate", noShow, [[10, "Strong"], [20.01, "Watch"], [Infinity, "Critical"]]],
+    ];
+  }
+
+  if (state.activeTab === "employment") {
     return [
       ["Induction arrival", induction, [[60, "Critical"], [75, "Watch"], [90, "Stable"], [101, "Strong"]]],
       ["Employee retention", retention, [[75, "Critical"], [82, "Watch"], [88, "Stable"], [101, "Strong"]]],
@@ -908,10 +942,38 @@ function renderHealthBand(areaManagers) {
 function renderFocusPanel(areaManagers) {
   if (!els.focusList || !els.focusCount) return;
   if (els.focusTitle) {
-    els.focusTitle.textContent = state.activeTab === "staff" ? "TM Capacity Building" : "10 Areas To Focus";
+    els.focusTitle.textContent = state.activeTab === "induction"
+      ? "Induction Watch"
+      : state.activeTab === "employment"
+        ? "TM Capacity Building"
+        : "10 Areas To Focus";
   }
 
-  if (state.activeTab === "staff") {
+  if (state.activeTab === "induction") {
+    const items = (data.induction || [])
+      .map((record) => {
+        const value = Number.isFinite(record.arrivalPct) ? Math.max(0, 100 - record.arrivalPct) : null;
+        const gap = Number.isFinite(record.target) && Number.isFinite(record.actual) ? Math.max(0, record.target - record.actual) : null;
+        return { title: record.week, value, gap };
+      })
+      .filter((item) => Number.isFinite(item.value))
+      .slice(-8)
+      .sort((a, b) => b.value - a.value);
+    els.focusCount.textContent = items.length.toString();
+    els.focusList.innerHTML = items.map((item, index) => `
+      <div class="focus-item">
+        <span>${index + 1}</span>
+        <div>
+          <strong>${escapeHtml(item.title)}</strong>
+          <small>${item.gap ?? "n/a"} did not arrive</small>
+        </div>
+        <em class="${noShowTone(item.value)}">${pctRound(item.value)}</em>
+      </div>
+    `).join("") || `<p class="empty">No induction arrival data available.</p>`;
+    return;
+  }
+
+  if (state.activeTab === "employment") {
     const items = regionalSummary(data.areaManagers)
       .filter((record) => Number.isFinite(record.vacancyPct) && record.vacancyPct > 0)
       .sort((a, b) => b.vacancyPct - a.vacancyPct)
@@ -1105,6 +1167,13 @@ function conversionTone(value) {
   if (value < 75) return "negative";
   if (value <= 90) return "neutral";
   return "positive";
+}
+
+function noShowTone(value) {
+  if (!Number.isFinite(value)) return "muted-cell";
+  if (value < 10) return "positive";
+  if (value <= 20) return "neutral";
+  return "negative";
 }
 
 function heatmapClass(value) {
@@ -1780,11 +1849,11 @@ function render() {
   });
   document.querySelectorAll("[data-tab-panel]").forEach((panel) => {
     const tabHidden = panel.dataset.tabPanel !== state.activeTab;
-    const staffPanel = panel.dataset.staffPanel;
-    const staffHidden = state.activeTab === "staff" && staffPanel
-      ? !staffPanel.split(" ").includes(state.staffFocus)
+    const employmentPanel = panel.dataset.employmentPanel;
+    const employmentHidden = state.activeTab === "employment" && employmentPanel
+      ? !employmentPanel.split(" ").includes(state.staffFocus)
       : false;
-    panel.hidden = tabHidden || staffHidden;
+    panel.hidden = tabHidden || employmentHidden;
   });
   renderKpis(data.areaManagers);
   renderStudentOrgKpis(data.areaManagers);

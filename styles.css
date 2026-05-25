@@ -122,7 +122,7 @@ input {
 
 .org-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
   margin-top: 14px;
 }
@@ -162,12 +162,57 @@ input {
   white-space: nowrap;
 }
 
+.org-kpi-card.pending {
+  border-top-color: var(--amber);
+  background: linear-gradient(180deg, #ffffff, #fffbeb);
+}
+
 .dashboard-layout {
   display: grid;
   grid-template-columns: minmax(200px, 0.58fr) minmax(0, 4fr) minmax(210px, 0.68fr);
   gap: 12px;
   align-items: start;
   margin-top: 18px;
+}
+
+body[data-active-tab="induction"] .dashboard-layout,
+body[data-active-tab="employment"] .dashboard-layout {
+  grid-template-columns: minmax(480px, 1fr) minmax(360px, 0.72fr);
+}
+
+body[data-active-tab="induction"] .kpi-grid,
+body[data-active-tab="employment"] .kpi-grid {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  gap: 10px;
+}
+
+body[data-active-tab="induction"] .kpi-grid {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+body[data-active-tab="employment"] .kpi-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+body[data-active-tab="induction"] .kpi-grid .kpi-card {
+  grid-column: span 2;
+}
+
+body[data-active-tab="induction"] .kpi-grid .dropout-kpi {
+  grid-column: span 4;
+}
+
+body[data-active-tab="induction"] .dashboard-stage,
+body[data-active-tab="employment"] .dashboard-stage {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+body[data-active-tab="induction"] .focus-panel,
+body[data-active-tab="employment"] .focus-panel {
+  grid-column: 2;
+  grid-row: 2;
 }
 
 .dashboard-stage {
@@ -338,7 +383,7 @@ input {
   font-weight: 950;
 }
 
-body[data-active-tab="student"] .focus-item span {
+body[data-active-tab="branch"] .focus-item span {
   color: #111827;
   background: linear-gradient(180deg, #fde68a, #facc15);
 }
@@ -425,12 +470,43 @@ body[data-active-tab="student"] .focus-item span {
   cursor: pointer;
 }
 
+.flow-tabs {
+  width: min(100%, 940px);
+}
+
+.flow-tabs button {
+  display: inline-flex;
+  flex: 1;
+  gap: 9px;
+  align-items: center;
+  justify-content: center;
+}
+
+.flow-tabs button small {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--blue-deep);
+  background: var(--blue-soft);
+  font-size: 0.68rem;
+  font-weight: 950;
+}
+
 .view-tabs button:hover,
 .view-tabs button:focus-visible,
 .view-tabs button.selected {
   color: #ffffff;
   background: linear-gradient(135deg, var(--navy), var(--blue-deep));
   outline: none;
+}
+
+.flow-tabs button:hover small,
+.flow-tabs button:focus-visible small,
+.flow-tabs button.selected small {
+  color: var(--navy);
+  background: #ffffff;
 }
 
 [hidden] {
@@ -525,6 +601,34 @@ body[data-active-tab="student"] .focus-item span {
   color: var(--muted);
   font-size: 0.72rem;
   line-height: 1.35;
+}
+
+.dropout-kpi {
+  background: linear-gradient(180deg, #ffffff, #fff9ec);
+}
+
+.dropout-kpi::after {
+  display: none;
+}
+
+.dropout-reasons-label {
+  margin-top: 8px;
+  color: var(--amber);
+  font-size: 0.67rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.dropout-reasons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 14px;
+  margin: 6px 0 0;
+  padding-left: 17px;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 750;
+  line-height: 1.25;
 }
 
 .main-grid,
@@ -1487,12 +1591,39 @@ tr:hover td {
     grid-template-columns: 1fr;
   }
 
-  body[data-active-tab="staff"] .dashboard-stage {
+  body[data-active-tab="induction"] .dashboard-layout,
+  body[data-active-tab="employment"] .dashboard-layout {
     grid-template-columns: 1fr;
   }
 
-  body[data-active-tab="staff"] .dashboard-stage > .panel[data-staff-panel],
-  body[data-active-tab="staff"] .branch-growth-panel {
+  body[data-active-tab="induction"] .kpi-grid,
+  body[data-active-tab="employment"] .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body[data-active-tab="induction"] .kpi-grid .kpi-card,
+  body[data-active-tab="induction"] .kpi-grid .dropout-kpi {
+    grid-column: auto;
+  }
+
+  body[data-active-tab="induction"] .kpi-grid .dropout-kpi {
+    grid-column: 1 / -1;
+  }
+
+  body[data-active-tab="induction"] .dashboard-stage,
+  body[data-active-tab="employment"] .dashboard-stage,
+  body[data-active-tab="induction"] .focus-panel,
+  body[data-active-tab="employment"] .focus-panel {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  body[data-active-tab="employment"] .dashboard-stage {
+    grid-template-columns: 1fr;
+  }
+
+  body[data-active-tab="employment"] .dashboard-stage > .panel[data-employment-panel],
+  body[data-active-tab="branch"] .branch-growth-panel {
     grid-column: auto;
     grid-row: auto;
   }
@@ -1545,8 +1676,21 @@ tr:hover td {
     grid-template-columns: 1fr;
   }
 
+  body[data-active-tab="induction"] .kpi-grid,
+  body[data-active-tab="employment"] .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  body[data-active-tab="induction"] .kpi-grid .dropout-kpi {
+    grid-column: auto;
+  }
+
   .view-tabs {
     width: 100%;
+  }
+
+  .flow-tabs {
+    flex-direction: column;
   }
 
   .view-tabs button {
